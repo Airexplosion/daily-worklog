@@ -25,6 +25,14 @@ pub struct PendingShot {
     pub thumb_jpeg: Vec<u8>,
 }
 
+/// 启动时发现的问题，主窗口顶部横幅显示
+#[derive(Default, Clone)]
+pub struct StartupStatus {
+    pub hotkey_error: Option<String>,
+    pub recovered_from: Option<String>,
+    pub data_lost: bool,
+}
+
 pub struct AppState {
     pub store: Store,
     pub data: Mutex<Data>,
@@ -42,6 +50,7 @@ pub struct AppState {
     pub queue: Mutex<Option<UnboundedSender<Job>>>,
     /// 删除后 5 秒内可撤销的条目
     pub trash: Mutex<Trash>,
+    pub status: Mutex<StartupStatus>,
 }
 
 impl AppState {
@@ -58,6 +67,7 @@ impl AppState {
             pending_shot: Mutex::new(None),
             queue: Mutex::new(None),
             trash: Mutex::new(Trash::default()),
+            status: Mutex::new(StartupStatus::default()),
         }
     }
 }

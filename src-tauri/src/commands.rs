@@ -339,3 +339,58 @@ pub fn copy_text(app: AppHandle, text: String) -> Result<String, String> {
     app.clipboard().write_text(clean.clone()).map_err(|e| format!("复制失败：{e}"))?;
     Ok(clean)
 }
+
+// ───────────── 横幅：热键失败、数据恢复、漏生成 ─────────────
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissedView {
+    pub date: String,
+    pub label: String,
+    pub count: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusView {
+    pub hotkey_error: Option<String>,
+    pub recovered_from: Option<String>,
+    pub data_lost: bool,
+    pub missed: Option<MissedView>,
+}
+
+#[tauri::command]
+pub fn get_status(app: AppHandle) -> StatusView {
+    let state = app.state::<AppState>();
+    let status = state.status.lock().unwrap().clone();
+    let missed = {
+        let data = state.data.lock().unwrap();
+        crate::reminder::find_missed(&data, views::today()).map(|(d, count)| MissedView {
+            date: d.format("%Y-%m-%d").to_string(),
+            label: views::missed_label(d, views::today()),
+            count,
+        })
+    };
+    StatusView {
+        hotkey_error: status.hotkey_error,
+        recovered_from: status.recovered_from,
+        data_lost: status.data_lost,
+        missed,
+    }
+}
+
+#[tauri::command]
+pub fn dismiss_missed(app: AppHandle, date: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut data = state.data.lock().unwrap();
+    data.days.entry(date).or_default().missed_banner_dismissed = true;
+    save(&state, &data)
+}
+
+#[tauri::command]
+pub fn dismiss_recovered(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let mut status = state.status.lock().unwrap();
+    status.recovered_from = None;
+    status.data_lost = false;
+}
