@@ -1,4 +1,5 @@
 pub mod model;
+pub mod storage;
 
 pub fn run() {
     tauri::Builder::default()
