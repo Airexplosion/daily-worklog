@@ -106,13 +106,37 @@ export function mountSettings(host) {
     // 6. 数据与关于
     body.append(section('数据与关于',
       row('数据文件夹', view.dataDir, h('button', { class: 'btn', html: `${icons.folder}<span>打开</span>`, onclick: () => invoke('open_data_dir').catch((e) => toast(errText(e))) })),
-      row('版本', `每日工作梳理 v${view.version}`, h('span', { class: 'update-slot' })),
+      row('版本', `每日工作梳理 v${view.version}`, updateChecker()),
     ));
-    window.dispatchEvent(new CustomEvent('settings-rendered'));
   }
 
   render();
   return { refresh() {} };
+}
+
+/** 设置页里手动检查更新 */
+function updateChecker() {
+  const out = h('span', { class: 'muted' });
+  const btn = h('button', { class: 'btn' }, '检查更新');
+  btn.addEventListener('click', async () => {
+    btn.setAttribute('disabled', '');
+    out.textContent = '正在检查…';
+    try {
+      /** @type {any} */
+      const r = await invoke('check_update', { manual: true });
+      out.innerHTML = '';
+      if (r.newer) {
+        out.append(`有新版本 v${r.latest} `, h('button', { class: 'link', onclick: () => invoke('open_url', { url: r.url }) }, '去下载'));
+      } else {
+        out.textContent = r.latest ? '已经是最新版本' : 'GitHub 上还没有发布过版本';
+      }
+    } catch (e) {
+      out.textContent = errText(e);
+    } finally {
+      btn.removeAttribute('disabled');
+    }
+  });
+  return h('span', { class: 'set-ctl' }, out, btn);
 }
 
 /**

@@ -62,6 +62,14 @@ async function renderBanners() {
       h('span', { class: 'tx' }, `数据文件损坏，已从 ${when} 的备份恢复`, h('small', {}, '那之后记的条目可能没了，请检查一下')),
       h('button', { class: 'btn small', onclick: () => invoke('dismiss_recovered').then(renderBanners) }, '知道了')));
   }
+  /** @type {any} */
+  const up = await invoke('pending_update');
+  if (up) {
+    banners.append(h('div', { class: 'banner info' },
+      h('span', { class: 'tx' }, `有新版本 v${up.latest}`, h('small', {}, `GitHub 打不开？找${up.publisher}要安装包`)),
+      h('button', { class: 'btn small', onclick: () => invoke('snooze_update', { version: up.latest }).then(renderBanners) }, '稍后'),
+      h('button', { class: 'btn small accent', onclick: () => invoke('open_url', { url: up.url }) }, '去下载')));
+  }
   if (s.missed) {
     banners.append(h('div', { class: 'banner' },
       h('span', { class: 'tx' }, `${s.missed.label}有 ${s.missed.count} 条记录还没生成总结`, h('small', {}, '那天提醒的时候电脑可能没开，提醒没弹出来')),
@@ -72,6 +80,7 @@ async function renderBanners() {
 
 api.listen('items-changed', () => { current?.refresh?.(); renderBanners(); });
 api.listen('summary-generated', () => renderBanners());
+api.listen('update-available', () => renderBanners());
 api.listen('main:open-summary', async () => {
   go('today');
   window.dispatchEvent(new CustomEvent('open-summary', { detail: await api.today() }));
