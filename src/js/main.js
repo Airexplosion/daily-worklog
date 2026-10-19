@@ -4,6 +4,7 @@
 import { api } from './api.js';
 import { icons } from './icons.js';
 import { mountToday } from './today.js';
+import { mountSummary } from './summary.js';
 import { h } from './ui.js';
 
 const content = /** @type {HTMLElement} */ (document.getElementById('content'));
@@ -47,5 +48,19 @@ api.listen('items-changed', () => current?.refresh?.());
 api.listen('tags-changed', () => current?.refresh?.());
 api.listen('main:edit-item', (/** @type {{payload: string}} */ e) => go('today').editItem?.(e.payload));
 window.addEventListener('focus', () => current?.refresh?.());
+
+/** 总结视图挂在"今日"（或"历史"）下面，返回时回到原来的页面 */
+window.addEventListener('open-summary', (/** @type {any} */ e) => {
+  const date = e.detail;
+  const from = currentKey;
+  content.innerHTML = '';
+  const host = h('section', { class: 'page summary' });
+  content.append(host);
+  currentKey = `${from}:summary`;
+  current = mountSummary(host, date, {
+    title: from === 'today' ? '今日总结' : undefined,
+    onBack: () => { currentKey = ''; go(from); },
+  });
+});
 
 go('today');

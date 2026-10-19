@@ -10,6 +10,7 @@ pub mod recognize;
 pub mod reminder;
 pub mod state;
 pub mod storage;
+pub mod summary;
 pub mod tags;
 pub mod views;
 pub mod windows;
@@ -37,6 +38,7 @@ pub fn run() {
                 .rotation_strategy(RotationStrategy::KeepSome(5))
                 .build(),
         )
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -146,6 +148,10 @@ pub fn run() {
             commands::rename_tag,
             commands::mute_today,
             commands::capture_from_main,
+            commands::generate_summary,
+            commands::save_summary,
+            commands::undo_regenerate,
+            commands::copy_text,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
