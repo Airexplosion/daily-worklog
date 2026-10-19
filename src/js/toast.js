@@ -60,6 +60,13 @@ function render(p) {
       .map((t) => (p.newTags.includes(t) ? `<span class="tag new">新 · ${esc(t)}</span>` : `<span class="tag">${esc(t)}</span>`))
       .join('') + '<button class="link" id="edit">改一下</button>';
     scheduleHide(5000);
+  } else if (p.kind === 'info') {
+    icon.className = 'info';
+    icon.textContent = 'i';
+    title.textContent = p.text;
+    line1.className = 'ds muted';
+    line1.textContent = p.message;
+    scheduleHide(5000);
   } else {
     icon.className = 'warn';
     icon.textContent = '!';

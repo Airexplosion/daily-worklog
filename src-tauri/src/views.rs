@@ -21,6 +21,19 @@ pub fn day_label(date: NaiveDate) -> String {
     format!("{}月{}日 {}", date.month(), date.day(), weekday_cn(date.weekday()))
 }
 
+/// 漏生成横幅里的日期说法：昨天 / 前天 / 本周X / 上周X / 几月几日
+pub fn missed_label(date: NaiveDate, today: NaiveDate) -> String {
+    let md = format!("{}.{}", date.month(), date.day());
+    let wd = weekday_cn(date.weekday()).trim_start_matches('周');
+    match (today - date).num_days() {
+        1 => format!("昨天（{md}）"),
+        2 => format!("前天（{md}）"),
+        _ if date.iso_week() == today.iso_week() => format!("本周{wd}（{md}）"),
+        _ if date.iso_week() == (today - chrono::Duration::days(7)).iso_week() => format!("上周{wd}（{md}）"),
+        _ => format!("{}月{}日（{}）", date.month(), date.day(), weekday_cn(date.weekday())),
+    }
+}
+
 pub fn today() -> NaiveDate {
     Local::now().date_naive()
 }
@@ -90,6 +103,16 @@ mod tests {
         assert_eq!(day_label(d("2026-10-15")), "10月15日 周四");
         assert_eq!(day_label(d("2026-11-03")), "11月3日 周二");
         assert_eq!(day_label(d("2026-10-18")), "10月18日 周日");
+    }
+
+    #[test]
+    fn missed_label_wording() {
+        let mon = d("2026-10-19");
+        assert_eq!(missed_label(d("2026-10-18"), mon), "昨天（10.18）");
+        assert_eq!(missed_label(d("2026-10-17"), mon), "前天（10.17）");
+        assert_eq!(missed_label(d("2026-10-16"), mon), "上周五（10.16）");
+        assert_eq!(missed_label(d("2026-10-07"), mon), "10月7日（周三）");
+        assert_eq!(missed_label(d("2026-10-13"), d("2026-10-16")), "本周二（10.13）");
     }
 
     #[test]

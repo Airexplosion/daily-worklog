@@ -44,23 +44,61 @@ for (const [key, p] of Object.entries(pages)) {
   nav.append(h('button', { 'data-page': key, html: `${p.icon}<span>${p.label}</span>`, onclick: () => go(key) }));
 }
 
-api.listen('items-changed', () => current?.refresh?.());
+/** 顶部横幅：热键冲突、数据恢复、漏生成。只在今日页显示 */
+async function renderBanners() {
+  /** @type {any} */
+  const s = await window.__TAURI__.core.invoke('get_status');
+  banners.innerHTML = '';
+  const invoke = window.__TAURI__.core.invoke;
+  if (s.hotkeyError) {
+    banners.append(h('div', { class: 'banner error' },
+      h('span', { class: 'tx' }, `截图快捷键 ${s.hotkeyError} 用不了，可能被别的软件占用了`),
+      h('button', { class: 'btn small', onclick: () => go('settings') }, '去设置里换一个')));
+  }
+  if (s.dataLost) {
+    banners.append(h('div', { class: 'banner error' },
+      h('span', { class: 'tx' }, '数据文件损坏，而且没有可用的备份，只能从空白开始', h('small', {}, '坏掉的文件已另存在数据文件夹里，没有删除')),
+      h('button', { class: 'btn small', onclick: () => invoke('dismiss_recovered').then(renderBanners) }, '知道了')));
+  } else if (s.recoveredFrom) {
+    const m = /data-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(s.recoveredFrom);
+    const when = m ? `${Number(m[2])}月${Number(m[3])}日 ${m[4]}:${m[5]}` : s.recoveredFrom;
+    banners.append(h('div', { class: 'banner' },
+      h('span', { class: 'tx' }, `数据文件损坏，已从 ${when} 的备份恢复`, h('small', {}, '那之后记的条目可能没了，请检查一下')),
+      h('button', { class: 'btn small', onclick: () => invoke('dismiss_recovered').then(renderBanners) }, '知道了')));
+  }
+  if (s.missed) {
+    banners.append(h('div', { class: 'banner' },
+      h('span', { class: 'tx' }, `${s.missed.label}有 ${s.missed.count} 条记录还没生成总结`, h('small', {}, '那天提醒的时候电脑可能没开，提醒没弹出来')),
+      h('button', { class: 'btn small', onclick: () => invoke('dismiss_missed', { date: s.missed.date }).then(renderBanners) }, '忽略'),
+      h('button', { class: 'btn small accent', onclick: () => window.dispatchEvent(new CustomEvent('open-summary', { detail: s.missed.date })) }, '现在生成')));
+  }
+}
+
+api.listen('items-changed', () => { current?.refresh?.(); renderBanners(); });
+api.listen('summary-generated', () => renderBanners());
+api.listen('main:open-summary', async () => {
+  go('today');
+  window.dispatchEvent(new CustomEvent('open-summary', { detail: await api.today() }));
+});
+api.listen('main:remind', () => { go('today'); current?.refresh?.(); });
 api.listen('tags-changed', () => current?.refresh?.());
 api.listen('main:edit-item', (/** @type {{payload: string}} */ e) => go('today').editItem?.(e.payload));
-window.addEventListener('focus', () => current?.refresh?.());
+window.addEventListener('focus', () => { current?.refresh?.(); renderBanners(); });
 
 /** 总结视图挂在"今日"（或"历史"）下面，返回时回到原来的页面 */
-window.addEventListener('open-summary', (/** @type {any} */ e) => {
+window.addEventListener('open-summary', async (/** @type {any} */ e) => {
   const date = e.detail;
-  const from = currentKey;
+  const isToday = date === (await api.today());
+  const from = currentKey.split(':')[0] || 'today';
   content.innerHTML = '';
   const host = h('section', { class: 'page summary' });
   content.append(host);
   currentKey = `${from}:summary`;
   current = mountSummary(host, date, {
-    title: from === 'today' ? '今日总结' : undefined,
+    title: isToday ? '今日总结' : undefined,
     onBack: () => { currentKey = ''; go(from); },
   });
 });
 
 go('today');
+renderBanners();

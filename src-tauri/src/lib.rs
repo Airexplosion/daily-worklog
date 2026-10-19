@@ -11,6 +11,7 @@ pub mod reminder;
 pub mod state;
 pub mod storage;
 pub mod summary;
+pub mod system;
 pub mod tags;
 pub mod views;
 pub mod windows;
@@ -27,6 +28,10 @@ pub fn run() {
     let logs_dir = store.logs_dir();
 
     tauri::Builder::default()
+        // 重复打开 exe：不开新进程，只把已有的主窗口叫出来
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            windows::show_main(app);
+        }))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
@@ -39,6 +44,13 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
+        .on_window_event(system::on_window_event)
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -105,7 +117,24 @@ pub fn run() {
             }
             let settings = store.load_settings();
             let hotkey = settings.hotkey.clone();
+            let retention = settings.shots_retention_days;
             app.manage(AppState::new(store.clone(), loaded.data, settings));
+            {
+                let state = app.state::<AppState>();
+                let mut status = state.status.lock().unwrap();
+                status.recovered_from = loaded.recovered_from.clone();
+                status.data_lost = loaded.lost;
+            }
+            if let Some(name) = &loaded.recovered_from {
+                log::warn!("data.json 损坏，已从备份 {name} 恢复");
+            }
+            if let Err(e) = store.backup_on_startup(chrono::Local::now().naive_local()) {
+                log::error!("启动备份失败：{e}");
+            }
+            let purged = store.purge_shots(retention, chrono::Local::now().date_naive());
+            if purged > 0 {
+                log::info!("清理了 {purged} 张超过 {retention} 天的截图");
+            }
             let worker = recognize::spawn_worker(app.handle().clone());
             *app.state::<AppState>().queue.lock().unwrap() = Some(worker);
             spawn_trash_sweeper(app.handle().clone());
@@ -114,7 +143,13 @@ pub fn run() {
             }
             if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
                 log::error!("热键 {hotkey} 注册失败：{e}");
+                app.state::<AppState>().status.lock().unwrap().hotkey_error = Some(hotkey.clone());
             }
+            if let Err(e) = system::build_tray(app.handle()) {
+                log::error!("托盘图标创建失败：{e}");
+            }
+            system::spawn_reminder_loop(app.handle().clone());
+            system::sync_autostart(app.handle());
             if let Err(e) = windows::ensure_overlays_for(app.handle(), &windows::monitor_geometry()) {
                 log::error!("创建框选窗口失败：{e}");
             }
@@ -152,6 +187,9 @@ pub fn run() {
             commands::save_summary,
             commands::undo_regenerate,
             commands::copy_text,
+            commands::get_status,
+            commands::dismiss_missed,
+            commands::dismiss_recovered,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
