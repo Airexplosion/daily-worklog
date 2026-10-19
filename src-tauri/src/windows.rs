@@ -111,7 +111,7 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
     }
     if app.get_webview_window("toast").is_none() {
         WebviewWindowBuilder::new(app, "toast", WebviewUrl::App("toast.html".into()))
-            .title("每日工作梳理")
+            .title("每日工作梳理 · 提示")
             .inner_size(TOAST_SIZE.0, TOAST_SIZE.1)
             .decorations(false)
             .transparent(true)
@@ -203,6 +203,7 @@ pub fn show_main(app: &AppHandle) -> Option<WebviewWindow> {
             .title("每日工作梳理")
             .inner_size(MAIN_SIZE.0, MAIN_SIZE.1)
             .min_inner_size(720.0, 520.0)
+            .theme(Some(tauri::Theme::Light))
             .center()
             .visible(false)
             .build()

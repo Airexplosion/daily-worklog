@@ -4,12 +4,14 @@ pub mod commands;
 pub mod flow;
 pub mod format;
 pub mod holidays;
+pub mod items;
 pub mod model;
 pub mod recognize;
 pub mod reminder;
 pub mod state;
 pub mod storage;
 pub mod tags;
+pub mod views;
 pub mod windows;
 
 use state::AppState;
@@ -69,6 +71,22 @@ pub fn run() {
                 responder.respond(response.unwrap());
             });
         })
+        // 截图原图：http://shot.localhost/{文件名}，只允许 shots 目录下的 png
+        .register_asynchronous_uri_scheme_protocol("shot", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let name = request.uri().path().rsplit('/').next().unwrap_or("").to_string();
+            std::thread::spawn(move || {
+                let valid = name.ends_with(".png") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+                let body = valid
+                    .then(|| std::fs::read(app.state::<AppState>().store.shots_dir().join(&name)).ok())
+                    .flatten();
+                let response = match body {
+                    Some(b) => Response::builder().header("Content-Type", "image/png").header("Cache-Control", "max-age=86400").body(b),
+                    None => Response::builder().status(404).body(Vec::new()),
+                };
+                responder.respond(response.unwrap());
+            });
+        })
         .setup(move |app| {
             let mut loaded = store.load_data();
             // 上次退出时还在识别的条目，改成待处理，等用户手动重试
@@ -88,6 +106,7 @@ pub fn run() {
             app.manage(AppState::new(store.clone(), loaded.data, settings));
             let worker = recognize::spawn_worker(app.handle().clone());
             *app.state::<AppState>().queue.lock().unwrap() = Some(worker);
+            spawn_trash_sweeper(app.handle().clone());
             if let Err(e) = windows::create_aux_windows(app.handle()) {
                 log::error!("创建补充框/提示窗失败：{e}");
             }
@@ -96,6 +115,10 @@ pub fn run() {
             }
             if let Err(e) = windows::ensure_overlays_for(app.handle(), &windows::monitor_geometry()) {
                 log::error!("创建框选窗口失败：{e}");
+            }
+            // 开机自启（带 --autostart）只进托盘，手动打开时显示主窗口
+            if !std::env::args().any(|a| a == "--autostart") {
+                windows::show_main(app.handle());
             }
             log::info!("启动完成，数据目录 {}", store.dir().display());
             Ok(())
@@ -110,7 +133,37 @@ pub fn run() {
             commands::note_skip,
             commands::toast_hide,
             commands::toast_open_item,
+            commands::today,
+            commands::get_day,
+            commands::get_tags,
+            commands::add_item,
+            commands::update_item,
+            commands::delete_item,
+            commands::undo_delete,
+            commands::retry_item,
+            commands::retry_all,
+            commands::confirm_tag,
+            commands::rename_tag,
+            commands::mute_today,
+            commands::capture_from_main,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
+}
+
+/// 每秒检查一次：过了撤销期的删除，真正删掉截图文件
+fn spawn_trash_sweeper(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            tick.tick().await;
+            let state = app.state::<AppState>();
+            let expired = state.trash.lock().unwrap().expired(std::time::Instant::now());
+            for removed in expired {
+                for shot in &removed.item.shots {
+                    let _ = std::fs::remove_file(state.store.dir().join(shot));
+                }
+            }
+        }
+    });
 }

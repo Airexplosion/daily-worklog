@@ -2,6 +2,7 @@
 
 use crate::capture::Frozen;
 use crate::holidays::Calendar;
+use crate::items::Trash;
 use crate::model::{Data, Settings};
 use crate::recognize::Job;
 use crate::storage::Store;
@@ -39,6 +40,8 @@ pub struct AppState {
     pub pending_shot: Mutex<Option<PendingShot>>,
     /// 识别队列
     pub queue: Mutex<Option<UnboundedSender<Job>>>,
+    /// 删除后 5 秒内可撤销的条目
+    pub trash: Mutex<Trash>,
 }
 
 impl AppState {
@@ -54,6 +57,7 @@ impl AppState {
             overlay_shown: AtomicBool::new(false),
             pending_shot: Mutex::new(None),
             queue: Mutex::new(None),
+            trash: Mutex::new(Trash::default()),
         }
     }
 }
