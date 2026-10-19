@@ -1,0 +1,61 @@
+# 推送 v* 标签时自动打包 Windows 安装包并发布 GitHub Release
+# 用法：改好 src-tauri/tauri.conf.json 里的 version，提交，然后
+#   git tag v0.1.0 && git push origin v0.1.0
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 标签和程序版本必须一致
+        shell: pwsh
+        run: |
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ($conf.version -ne $tag) {
+            Write-Error "标签 v$tag 和 tauri.conf.json 里的版本 $($conf.version) 不一致"
+            exit 1
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: 单元测试
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 程序里检查更新用的仓库，以及"GitHub 打不开时找谁要安装包"
+          DWL_UPDATE_REPO: ${{ github.repository }}
+          DWL_PUBLISHER: ${{ vars.DWL_PUBLISHER || '发布人' }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 每日工作梳理 ${{ github.ref_name }}
+          releaseBody: |
+            下载下面的 DailyWorkLog_…_x64-setup.exe，双击安装（不需要管理员权限）。
+            已经装过的直接运行新安装包覆盖即可，记录和设置都会保留。
+            第一次安装遇到"Windows 已保护你的电脑"或杀毒软件拦截，请看仓库里的《首次安装说明》。
+          releaseDraft: false
+          prerelease: false
+          # GitHub 会改掉中文文件名，安装包用英文名
+          assetNamePattern: DailyWorkLog_[version]_[arch][setup][ext]
