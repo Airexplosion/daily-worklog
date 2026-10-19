@@ -190,12 +190,8 @@ docs/首次安装说明.md
 **Files:** Create `src-tauri/src/summary.rs`, `src/js/summary.js`; Modify `commands.rs`, `today.js`
 
 **Interfaces:**
-- Produces：命令 `generate_summary(date: String, on_delta: Channel<String>) -> SummaryResult{text, checks: Vec<Check>, removed: Vec<String>, skipped_pending: usize}`、`save_summary(date, text)`、`undo_regenerate(date)`、`copy_text(text)`（`\r\n`）、`summary_stale(date) -> bool`（任何条目 `createdAt`/编辑时间晚于 `generatedAt`，或条目删除后）。0 条 → 只有标题 + 检查栏"今天还没记录"。
-- [ ] Step 1: 测试 `for_clipboard_symbols_only`（"T
-1.a
-- 多写的 **b**" → "T
-1.a
-多写的 b"）、`summary_input_excludes_pending`、`stale_after_item_edit`、`regenerate_keeps_previous_for_undo`、`zero_items_title_only`。
+- Produces：命令 `generate_summary(date: String, on_delta: Channel<String>) -> SummaryResult{text, checks: Vec<Check>, removed: Vec<String>, skipped_pending: usize}`、`save_summary(date, text)`、`undo_regenerate(date)`、`copy_text(text)`（调用 `format::for_clipboard(text:&str) -> String`：只删 `#` `*` 反引号与行首 `-` `•` `>`，换行统一 `\r\n`，不重编号、不删行）、`summary_stale(date) -> bool`（任何条目 `createdAt`/编辑时间晚于 `generatedAt`，或条目删除后）。0 条 → 只有标题 + 检查栏"今天还没记录"。
+- [ ] Step 1: 测试 `for_clipboard_symbols_only`（`"T\n1.a\n- 多写的 **b**"` → `"T\r\n1.a\r\n多写的 b"`）、`summary_input_excludes_pending`、`stale_after_item_edit`、`regenerate_keeps_previous_for_undo`、`zero_items_title_only`。
 - [ ] Step 2–4。 - [ ] Step 5: 手测流式效果与复制到微信。 - [ ] Step 6: Commit。
 
 ### Task 11: 系统集成：托盘、单实例、自启、关闭到托盘、提醒、通知、热键失败
