@@ -67,6 +67,16 @@ pub fn grab_all() -> Result<Frozen, String> {
     Ok(Frozen { taken_at, monitors })
 }
 
+/// 选区坐标可能是负的（鼠标拖出了屏幕左边或上边），裁到 0；裁完没东西了返回 None
+pub fn clamp_rect(x: i64, y: i64, w: i64, h: i64) -> Option<PhysRect> {
+    let (x1, y1) = (x.max(0), y.max(0));
+    let (x2, y2) = (x + w, y + h);
+    if x2 <= x1 || y2 <= y1 {
+        return None;
+    }
+    Some(PhysRect { x: x1 as u32, y: y1 as u32, w: (x2 - x1) as u32, h: (y2 - y1) as u32 })
+}
+
 /// 超出屏幕的部分裁掉；完全在外面返回 None
 pub fn crop(frozen: &Frozen, index: usize, rect: PhysRect) -> Option<RgbaImage> {
     let m = frozen.monitors.iter().find(|m| m.index == index)?;
@@ -193,6 +203,15 @@ mod tests {
         assert_eq!(out.dimensions(), (10, 10));
         assert!(crop(&f, 0, PhysRect { x: 200, y: 0, w: 5, h: 5 }).is_none());
         assert!(crop(&f, 3, PhysRect { x: 0, y: 0, w: 5, h: 5 }).is_none());
+    }
+
+    #[test]
+    fn clamp_rect_negative_and_overflow() {
+        // 拖出屏幕左上：负坐标裁到 0，宽高相应缩短
+        assert_eq!(clamp_rect(-30, -10, 100, 50), Some(PhysRect { x: 0, y: 0, w: 70, h: 40 }));
+        assert_eq!(clamp_rect(10, 20, 30, 40), Some(PhysRect { x: 10, y: 20, w: 30, h: 40 }));
+        assert_eq!(clamp_rect(-100, 0, 50, 50), None);
+        assert_eq!(clamp_rect(0, 0, 0, 10), None);
     }
 
     #[test]

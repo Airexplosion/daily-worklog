@@ -30,6 +30,8 @@ pub struct SettingsView {
     pub default_prompts: DefaultPrompts,
     pub version: String,
     pub data_dir: String,
+    /// 打包的节假日数据里没有今年
+    pub holiday_stale: bool,
 }
 
 fn masked(s: &Settings) -> Value {
@@ -59,6 +61,7 @@ pub fn get_settings(app: AppHandle) -> SettingsView {
         },
         version: app.package_info().version.to_string(),
         data_dir: state.store.dir().display().to_string(),
+        holiday_stale: state.calendar.stale_for(views::today()),
     }
 }
 

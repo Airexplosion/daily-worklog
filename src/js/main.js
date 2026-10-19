@@ -81,13 +81,20 @@ async function renderBanners() {
 api.listen('items-changed', () => { current?.refresh?.(); renderBanners(); });
 api.listen('summary-generated', () => renderBanners());
 api.listen('update-available', () => renderBanners());
-api.listen('main:open-summary', async () => {
-  go('today');
-  window.dispatchEvent(new CustomEvent('open-summary', { detail: await api.today() }));
-});
+/** 托盘"生成今日总结"、提示窗"改一下"：主窗口可能刚建，所以由页面自己来取要做的事 */
+async function runIntent() {
+  /** @type {any} */
+  const intent = await window.__TAURI__.core.invoke('take_main_intent');
+  if (!intent) return;
+  if (intent.kind === 'editItem') go('today').editItem?.(intent.id);
+  if (intent.kind === 'openSummary') {
+    go('today');
+    window.dispatchEvent(new CustomEvent('open-summary', { detail: await api.today() }));
+  }
+}
+api.listen('main:intent', () => runIntent());
 api.listen('main:remind', () => { go('today'); current?.refresh?.(); });
 api.listen('tags-changed', () => current?.refresh?.());
-api.listen('main:edit-item', (/** @type {{payload: string}} */ e) => go('today').editItem?.(e.payload));
 window.addEventListener('focus', () => { current?.refresh?.(); renderBanners(); });
 
 /** 总结视图挂在"今日"（或"历史"）下面，返回时回到原来的页面 */
@@ -107,3 +114,4 @@ window.addEventListener('open-summary', async (/** @type {any} */ e) => {
 
 go('today');
 renderBanners();
+runIntent();

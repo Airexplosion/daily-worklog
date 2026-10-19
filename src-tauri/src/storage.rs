@@ -62,19 +62,26 @@ impl Store {
 
     pub fn load_data(&self) -> LoadOutcome {
         let path = self.data_path();
-        let raw = match fs::read_to_string(&path) {
-            Ok(raw) => raw,
-            Err(_) => return LoadOutcome { data: Data::default(), recovered_from: None, lost: false },
+        let bytes = match fs::read(&path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return LoadOutcome { data: Data::default(), recovered_from: None, lost: false }
+            }
+            // 读不了（被占用、没权限）也走恢复，绝不能当成"没有数据"再覆盖掉
+            Err(e) => {
+                log_read_error(&path, &e);
+                Vec::new()
+            }
         };
-        if let Ok(data) = serde_json::from_str::<Data>(&raw) {
+        if let Some(data) = parse_data(&bytes) {
             return LoadOutcome { data, recovered_from: None, lost: false };
         }
         // 坏文件留档
         let stamp = Local::now().format("%Y%m%d-%H%M%S");
         let _ = fs::rename(&path, self.dir.join(format!("data.corrupt-{stamp}.json")));
         for name in self.backup_names().into_iter().rev() {
-            let Ok(raw) = fs::read_to_string(self.backups_dir().join(&name)) else { continue };
-            if let Ok(data) = serde_json::from_str::<Data>(&raw) {
+            let Ok(raw) = fs::read(self.backups_dir().join(&name)) else { continue };
+            if let Some(data) = parse_data(&raw) {
                 let _ = self.save_data(&data);
                 return LoadOutcome { data, recovered_from: Some(name), lost: false };
             }
@@ -99,13 +106,13 @@ impl Store {
 
     /// 先确认 data.json 能解析，再复制一份到 backups，最多留 7 份
     pub fn backup_on_startup(&self, now: NaiveDateTime) -> io::Result<()> {
-        let Ok(raw) = fs::read_to_string(self.data_path()) else { return Ok(()) };
-        if serde_json::from_str::<Data>(&raw).is_err() {
+        let Ok(raw) = fs::read(self.data_path()) else { return Ok(()) };
+        if parse_data(&raw).is_none() {
             return Ok(());
         }
         fs::create_dir_all(self.backups_dir())?;
         let name = format!("data-{}.json", now.format("%Y%m%d-%H%M%S"));
-        write_atomic(&self.backups_dir().join(name), raw.as_bytes())?;
+        write_atomic(&self.backups_dir().join(name), &raw)?;
         let names = self.backup_names();
         if names.len() > MAX_BACKUPS {
             for old in &names[..names.len() - MAX_BACKUPS] {
@@ -145,6 +152,16 @@ impl Store {
         }
         removed
     }
+}
+
+/// 解析 data.json 的字节；带 UTF-8 BOM（记事本另存过）也认
+fn parse_data(bytes: &[u8]) -> Option<Data> {
+    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    serde_json::from_slice::<Data>(body).ok()
+}
+
+fn log_read_error(path: &Path, e: &io::Error) {
+    log::warn!("读取 {} 失败：{e}", path.display());
 }
 
 /// 先写 .tmp 并刷盘，再改名覆盖，断电时不会只写一半
@@ -289,6 +306,37 @@ mod tests {
         assert!(shots.join("20260717-100000-bbbb.png").exists());
         assert!(shots.join("20261015-100000-cccc.png").exists());
         assert!(shots.join("readme.txt").exists());
+    }
+
+    #[test]
+    fn truncated_utf8_data_recovers_from_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        let b = dir.path().join("backups");
+        fs::create_dir_all(&b).unwrap();
+        fs::write(b.join("data-20261014-090000.json"), serde_json::to_string(&sample_data("good")).unwrap()).unwrap();
+        // 在中文字符中间截断：不是合法 UTF-8
+        let full = serde_json::to_string(&sample_data("沟通王老师")).unwrap().into_bytes();
+        let cut = full.iter().position(|&c| c >= 0x80).unwrap() + 1;
+        fs::write(dir.path().join("data.json"), &full[..cut]).unwrap();
+        let loaded = store.load_data();
+        assert!(loaded.data.days.contains_key("good"), "要从备份恢复，而不是当成没有数据");
+        assert_eq!(loaded.recovered_from.as_deref(), Some("data-20261014-090000.json"));
+    }
+
+    #[test]
+    fn bom_prefixed_data_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend(serde_json::to_vec(&sample_data("2026-10-15")).unwrap());
+        fs::write(dir.path().join("data.json"), bytes).unwrap();
+        let loaded = store.load_data();
+        assert!(loaded.data.days.contains_key("2026-10-15"));
+        assert_eq!(loaded.recovered_from, None);
+        assert!(!loaded.lost);
+        store.backup_on_startup(at("2026-10-15 09:00:00")).unwrap();
+        assert_eq!(fs::read_dir(dir.path().join("backups")).unwrap().count(), 1, "带 BOM 的好文件也要备份");
     }
 
     #[test]

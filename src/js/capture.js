@@ -29,6 +29,9 @@ function reset() {
 
 /** @param {number} v */
 const phys = (v) => Math.round(v * window.devicePixelRatio);
+/** 鼠标可能拖到别的屏上，坐标限制在本屏内 */
+const clampX = (/** @type {number} */ v) => Math.min(Math.max(v, 0), window.innerWidth);
+const clampY = (/** @type {number} */ v) => Math.min(Math.max(v, 0), window.innerHeight);
 
 function draw() {
   if (!rect) return;
@@ -52,18 +55,21 @@ function moveCross(e) {
 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || busy) return;
-  start = { x: e.clientX, y: e.clientY };
-  rect = { x: e.clientX, y: e.clientY, w: 0, h: 0 };
+  start = { x: clampX(e.clientX), y: clampY(e.clientY) };
+  rect = { x: start.x, y: start.y, w: 0, h: 0 };
+  /** @type {HTMLElement} */ (document.documentElement).setPointerCapture?.(e.pointerId);
 });
 
 window.addEventListener('pointermove', (e) => {
   moveCross(e);
   if (!start) return;
+  const cx = clampX(e.clientX);
+  const cy = clampY(e.clientY);
   rect = {
-    x: Math.min(start.x, e.clientX),
-    y: Math.min(start.y, e.clientY),
-    w: Math.abs(e.clientX - start.x),
-    h: Math.abs(e.clientY - start.y),
+    x: Math.min(start.x, cx),
+    y: Math.min(start.y, cy),
+    w: Math.abs(cx - start.x),
+    h: Math.abs(cy - start.y),
   };
   draw();
 });
@@ -80,7 +86,11 @@ window.addEventListener('pointerup', (e) => {
   const x1 = phys(rect.x), y1 = phys(rect.y);
   const x2 = phys(rect.x + rect.w), y2 = phys(rect.y + rect.h);
   invoke('capture_done', { index, x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
-    .catch((err) => console.error(err));
+    .catch((err) => {
+      // 失败时恢复可操作，不能让框选画面卡住
+      console.error(err);
+      reset();
+    });
 });
 
 window.addEventListener('contextmenu', (e) => {

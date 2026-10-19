@@ -1,6 +1,5 @@
 //! 前端可调用的命令。
 
-use crate::capture::PhysRect;
 use crate::flow;
 use crate::windows::{self, NoteOpen};
 use tauri::{AppHandle, Emitter};
@@ -16,8 +15,10 @@ pub fn overlay_ready(app: AppHandle, index: usize) {
 }
 
 #[tauri::command]
-pub async fn capture_done(app: AppHandle, index: usize, x: u32, y: u32, w: u32, h: u32) -> Result<(), String> {
-    let result = flow::finish_selection(&app, index, PhysRect { x, y, w, h });
+pub async fn capture_done(app: AppHandle, index: usize, x: i64, y: i64, w: i64, h: i64) -> Result<(), String> {
+    let result = crate::capture::clamp_rect(x, y, w, h)
+        .ok_or_else(|| "选区不在屏幕内".to_string())
+        .and_then(|rect| flow::finish_selection(&app, index, rect));
     if let Err(e) = &result {
         log::error!("截图失败：{e}");
         flow::cancel(&app);
@@ -50,13 +51,23 @@ pub fn toast_hide(app: AppHandle) {
     windows::hide_toast(&app);
 }
 
-/// 提示窗上的"改一下"：打开主窗口，让这条进入编辑。可能新建窗口，所以是 async
+/// 提示窗上的"改一下"：打开主窗口，让这条进入编辑
 #[tauri::command]
 pub async fn toast_open_item(app: AppHandle, id: String) {
     windows::hide_toast(&app);
-    if windows::show_main(&app).is_some() {
-        let _ = app.emit_to("main", "main:edit-item", id);
-    }
+    open_main_with(&app, crate::state::MainIntent::EditItem(id));
+}
+
+/// 记下要主窗口做的事，打开主窗口并通知它来取（刚建的页面加载完也会自己来取）
+pub fn open_main_with(app: &AppHandle, intent: crate::state::MainIntent) {
+    *app.state::<crate::state::AppState>().main_intent.lock().unwrap() = Some(intent);
+    windows::show_main(app);
+    let _ = app.emit_to("main", "main:intent", ());
+}
+
+#[tauri::command]
+pub fn take_main_intent(app: AppHandle) -> Option<crate::state::MainIntent> {
+    app.state::<crate::state::AppState>().main_intent.lock().unwrap().take()
 }
 
 // ───────────── 主窗口：今日 / 条目 ─────────────
@@ -281,6 +292,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 pub async fn generate_summary(app: AppHandle, date: String, on_delta: Channel<String>) -> Result<SummaryResult, String> {
     let state = app.state::<AppState>();
     let d = views::parse_date(&date).ok_or("日期格式不对")?;
+    let started_at = now_iso();
     let settings = state.settings.lock().unwrap().clone();
     let day = state.data.lock().unwrap().days.get(&date).cloned().unwrap_or_default();
     let (sources, skipped) = summary::sources(&day);
@@ -297,11 +309,10 @@ pub async fn generate_summary(app: AppHandle, date: String, on_delta: Channel<St
         .await
         .map_err(|e| e.to_string())?
     };
-    let result = summary::finalize(&raw, &settings, d, &sources, skipped);
+    let result = summary::finalize(&raw, &settings, d, &sources, skipped)?;
     {
         let mut data = state.data.lock().unwrap();
-        let entry = data.days.entry(date.clone()).or_default();
-        summary::set_generated(entry, &result.text, &now_iso());
+        summary::record_generated(&mut data, &date, &result.text, &started_at);
         save(&state, &data)?;
     }
     log::info!("总结已生成：{date}，{} 条", sources.len());

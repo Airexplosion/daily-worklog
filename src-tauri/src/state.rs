@@ -25,6 +25,14 @@ pub struct PendingShot {
     pub thumb_jpeg: Vec<u8>,
 }
 
+/// 要主窗口做的事。主窗口可能刚建、页面还没加载，所以先存着，页面来取
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", content = "id", rename_all = "camelCase")]
+pub enum MainIntent {
+    EditItem(String),
+    OpenSummary,
+}
+
 /// 启动时发现的问题，主窗口顶部横幅显示
 #[derive(Default, Clone)]
 pub struct StartupStatus {
@@ -53,6 +61,7 @@ pub struct AppState {
     pub status: Mutex<StartupStatus>,
     /// 最近一次发现的新版本（横幅用）
     pub update: Mutex<Option<crate::update::UpdateInfo>>,
+    pub main_intent: Mutex<Option<MainIntent>>,
 }
 
 impl AppState {
@@ -71,6 +80,7 @@ impl AppState {
             trash: Mutex::new(Trash::default()),
             status: Mutex::new(StartupStatus::default()),
             update: Mutex::new(None),
+            main_intent: Mutex::new(None),
         }
     }
 }

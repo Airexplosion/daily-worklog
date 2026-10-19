@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::sync::LazyLock;
 
 static THINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<think>.*?</think>").unwrap());
-static FENCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*```[^\n]*$").unwrap());
+static FENCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"```[A-Za-z]*").unwrap());
 /// 行首的项目符号 + 编号，如 "- 3) "、"1. "、"2、"
 static NUM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[\s\-•>*#·]*(\d{1,3})\s*([\.、．\)）:：])\s*").unwrap());
@@ -34,7 +34,30 @@ pub fn strip_think(s: &str) -> String {
     FENCE_RE.replace_all(&out, "").to_string()
 }
 
-/// 行首是编号时返回编号之后的内容。"3.5万收入" 这种小数不算编号
+/// 行首的编号和编号之后的内容（不判断是不是小数）
+fn num_prefix(line: &str) -> Option<(u32, &str)> {
+    let caps = NUM_RE.captures(line)?;
+    let n = caps.get(1)?.as_str().parse().ok()?;
+    Some((n, &line[caps.get(0)?.end()..]))
+}
+
+/// 按顺序认编号：第 k 条应以 k 开头（允许跳过一个号）。
+/// 这样"2.3月账单核对""3.21楼门锁报修"里紧跟编号的数字不会被当成编号
+fn numbered_lines(lines: &[&str]) -> Vec<Option<String>> {
+    let mut expected = 1;
+    lines
+        .iter()
+        .map(|l| match num_prefix(l) {
+            Some((n, rest)) if n == expected || n == expected + 1 => {
+                expected = n + 1;
+                Some(rest.to_string())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// 单条文字前面的编号。"3.5万收入" 这种小数不算编号
 fn strip_number(line: &str) -> Option<&str> {
     let caps = NUM_RE.captures(line)?;
     let whole = caps.get(0).unwrap();
@@ -63,21 +86,21 @@ pub struct Cleaned {
 pub fn clean_summary(raw: &str) -> Cleaned {
     let text = strip_think(raw);
     let lines: Vec<&str> = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-    let numbered: Vec<bool> = lines.iter().map(|l| strip_number(l).is_some()).collect();
+    let numbered = numbered_lines(&lines);
     let mut out = Cleaned { lines: Vec::new(), removed: Vec::new() };
     let push = |out: &mut Cleaned, l: &str| {
-        let c = clean_line(strip_number(l).unwrap_or(l));
+        let c = clean_line(l);
         if !c.is_empty() {
             out.lines.push(c);
         }
     };
-    match (numbered.iter().position(|n| *n), numbered.iter().rposition(|n| *n)) {
+    match (numbered.iter().position(|n| n.is_some()), numbered.iter().rposition(|n| n.is_some())) {
         (Some(first), Some(last)) => {
             for (i, l) in lines.iter().enumerate() {
                 if i < first || i > last {
                     out.removed.push(l.to_string());
                 } else {
-                    push(&mut out, l);
+                    push(&mut out, numbered[i].as_deref().unwrap_or(l));
                 }
             }
         }
@@ -244,6 +267,22 @@ mod tests {
     fn clean_summary_middle_unnumbered_line_becomes_item() {
         let c = clean_summary("1.甲事情处理\n乙事情处理\n2.丙事情处理");
         assert_eq!(c.lines, s(&["甲事情处理", "乙事情处理", "丙事情处理"]));
+    }
+
+    #[test]
+    fn clean_summary_content_starting_with_digit() {
+        let c = clean_summary("1.拼多多收入确认填写\n2.3月账单核对\n3.21楼直播间门锁报修");
+        assert_eq!(c.lines, s(&["拼多多收入确认填写", "3月账单核对", "21楼直播间门锁报修"]));
+        assert!(c.removed.is_empty(), "{:?}", c.removed);
+        let c2 = clean_summary("1. 3月账单核对\n2. 百应提现");
+        assert_eq!(c2.lines, s(&["3月账单核对", "百应提现"]));
+        let c3 = clean_summary("张三10.15工作梳理\n1.3.5万收入核对\n2.对账");
+        assert_eq!(c3.lines, s(&["3.5万收入核对", "对账"]));
+    }
+
+    #[test]
+    fn strip_think_single_line_fence() {
+        assert_eq!(strip_think("```json {\"item\":\"对账\"} ```").trim(), "{\"item\":\"对账\"}");
     }
 
     #[test]

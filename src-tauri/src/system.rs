@@ -9,6 +9,30 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum CloseAction {
+    /// 主窗口：藏到托盘
+    HideMain,
+    /// 补充框（Alt+F4）：当作"跳过"
+    SkipNote,
+    /// 框选窗口（Alt+F4）：取消这次截图
+    CancelCapture,
+    /// 提示窗：藏起来，窗口留着下次用
+    Hide,
+    Allow,
+}
+
+/// 各窗口点关闭（含 Alt+F4）时怎么办。辅助窗口只建一次，不能真的被关掉
+pub fn close_action(label: &str) -> CloseAction {
+    match label {
+        "main" => CloseAction::HideMain,
+        "note" => CloseAction::SkipNote,
+        "toast" => CloseAction::Hide,
+        l if l.starts_with("capture-") => CloseAction::CancelCapture,
+        _ => CloseAction::Allow,
+    }
+}
+
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
@@ -29,11 +53,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "open" => {
                 windows::show_main(app);
             }
-            "summary" => {
-                if windows::show_main(app).is_some() {
-                    let _ = app.emit_to("main", "main:open-summary", ());
-                }
-            }
+            "summary" => crate::commands::open_main_with(app, crate::state::MainIntent::OpenSummary),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -49,42 +69,81 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 主窗口点关闭 = 藏到托盘；第一次给个提示
+/// 主窗口点关闭 = 藏到托盘（第一次给个提示）；辅助窗口按 close_action 处理
 pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
-    if window.label() != "main" {
+    let WindowEvent::CloseRequested { api, .. } = event else { return };
+    let action = close_action(window.label());
+    if action == CloseAction::Allow {
         return;
     }
-    if let WindowEvent::CloseRequested { api, .. } = event {
-        api.prevent_close();
-        let _ = window.hide();
-        let app = window.app_handle();
-        let state = app.state::<AppState>();
-        let first = {
-            let mut s = state.settings.lock().unwrap();
-            let first = !s.close_to_tray_tip_shown;
-            if first {
-                s.close_to_tray_tip_shown = true;
-                let _ = state.store.save_settings(&s);
-            }
-            first
-        };
-        if first {
-            windows::show_toast(
-                app,
-                ToastPayload {
-                    kind: "info".into(),
-                    id: String::new(),
-                    index: 0,
-                    text: "已最小化到托盘，不会退出".into(),
-                    tags: Vec::new(),
-                    new_tags: Vec::new(),
-                    note: String::new(),
-                    message: "双击右下角托盘图标可以重新打开".into(),
-                    low_confidence: false,
-                },
-            );
+    api.prevent_close();
+    let _ = window.hide();
+    let app = window.app_handle().clone();
+    match action {
+        CloseAction::SkipNote => {
+            std::thread::spawn(move || {
+                if crate::flow::commit_pending(&app, "").is_err() {
+                    crate::flow::cancel(&app);
+                }
+            });
         }
+        CloseAction::CancelCapture => {
+            std::thread::spawn(move || crate::flow::cancel(&app));
+        }
+        CloseAction::HideMain => first_close_tip(&app),
+        _ => {}
     }
+}
+
+/// 第一次把主窗口关到托盘时提示一下
+fn first_close_tip(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let first = {
+        let mut s = state.settings.lock().unwrap();
+        let first = !s.close_to_tray_tip_shown;
+        if first {
+            s.close_to_tray_tip_shown = true;
+            let _ = state.store.save_settings(&s);
+        }
+        first
+    };
+    if first {
+        windows::show_toast(
+            app,
+            ToastPayload {
+                kind: "info".into(),
+                id: String::new(),
+                index: 0,
+                text: "已最小化到托盘，不会退出".into(),
+                tags: Vec::new(),
+                new_tags: Vec::new(),
+                note: String::new(),
+                message: "双击右下角托盘图标可以重新打开".into(),
+                low_confidence: false,
+            },
+        );
+    }
+}
+
+/// 自启时没有主窗口，快捷键注册失败要用右下角提示告诉用户（等提示窗页面加载好再发）
+pub fn notify_hotkey_failed(app: AppHandle, hotkey: String) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        windows::show_toast(
+            &app,
+            ToastPayload {
+                kind: "info".into(),
+                id: String::new(),
+                index: 0,
+                text: format!("截图快捷键 {hotkey} 用不了"),
+                tags: Vec::new(),
+                new_tags: Vec::new(),
+                note: String::new(),
+                message: "可能被别的软件占用了，打开主窗口在设置里换一个".into(),
+                low_confidence: false,
+            },
+        );
+    });
 }
 
 /// 每 30 秒看一次钟：改系统时间、睡眠唤醒后都能正确触发；启动后立刻检查一次（补弹）
@@ -154,5 +213,20 @@ pub fn sync_autostart(app: &AppHandle) {
     };
     if let Err(e) = result {
         log::warn!("开机自启设置失败：{e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn close_action_per_window() {
+        assert_eq!(close_action("main"), CloseAction::HideMain);
+        assert_eq!(close_action("note"), CloseAction::SkipNote);
+        assert_eq!(close_action("capture-0"), CloseAction::CancelCapture);
+        assert_eq!(close_action("capture-12"), CloseAction::CancelCapture);
+        assert_eq!(close_action("toast"), CloseAction::Hide);
+        assert_eq!(close_action("onboarding"), CloseAction::Allow);
     }
 }

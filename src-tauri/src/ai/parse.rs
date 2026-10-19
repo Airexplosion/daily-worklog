@@ -137,6 +137,12 @@ mod tests {
     }
 
     #[test]
+    fn single_line_fence() {
+        let r = parse_vision("```json {\"item\":\"百应提现\",\"tags\":[\"百应\"],\"confidence\":0.8} ```").unwrap();
+        assert_eq!(r.item, "百应提现");
+    }
+
+    #[test]
     fn not_json_returns_raw() {
         let e = parse_vision("<think>x</think>我觉得这是在做对账").unwrap_err();
         assert_eq!(e, "我觉得这是在做对账");
