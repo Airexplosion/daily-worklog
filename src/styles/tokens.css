@@ -1,0 +1,31 @@
+/* 设计文档第 8 节：B · Win11 原生风 */
+:root {
+  --bg-window: #f3f3f3;
+  --bg-content: #f9f9f9;
+  --bg-card: #ffffff;
+  --bg-subtle: #fbfbfb;
+  --bg-hover: #eaeaea;
+  --stroke: #e5e5e5;
+  --stroke-strong: #d0d0d0;
+  --stroke-input: #8a8a8a;
+  --text: #1b1b1b;
+  --text-2: #5f5f5f;
+  --text-3: #707070;
+  --text-disabled: #8a8a8a;
+  --accent: #005fb8;
+  --accent-hover: #1a6fc0;
+  --accent-pressed: #004c93;
+  --accent-soft: #e0eefb;
+  --accent-softer: #f2f8fd;
+  --success: #0f7b0f;
+  --success-soft: #dff6dd;
+  --warn-bg: #fff4ce;
+  --warn-text: #9a5b00;
+  --warn-stroke: #f7e09a;
+  --danger: #c42b1c;
+  --radius-control: 4px;
+  --radius-card: 6px;
+  --radius-surface: 8px;
+  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --shadow-flyout: 0 8px 24px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
