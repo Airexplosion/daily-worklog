@@ -83,7 +83,13 @@ pub fn delete(data: &mut Data, id: &str, now: &str) -> Option<Removed> {
 pub fn undo_delete(data: &mut Data, removed: Removed, now: &str) {
     let day = data.days.entry(removed.date).or_default();
     let index = removed.index.min(day.items.len());
-    day.items.insert(index, removed.item);
+    let mut item = removed.item;
+    // 删除时还在识别：那次识别已经作废，转成待处理，用户可以点重试
+    if item.status == ItemStatus::Recognizing {
+        item.status = ItemStatus::Pending;
+        item.error = Some("删除时还没识别完，点重试再识别一次".into());
+    }
+    day.items.insert(index, item);
     day.items_changed_at = Some(now.to_string());
 }
 
@@ -213,6 +219,17 @@ mod tests {
         assert_eq!(gone.len(), 1);
         assert_eq!(gone[0].item.shots, vec!["shots/a.png"]);
         assert!(trash.take(&token).is_none(), "过期后不能再撤销");
+    }
+
+    #[test]
+    fn undo_of_recognizing_item_becomes_pending() {
+        let mut d = data();
+        d.days.get_mut("2026-10-15").unwrap().items[0].status = ItemStatus::Recognizing;
+        let removed = delete(&mut d, "a", "t").unwrap();
+        undo_delete(&mut d, removed, "t");
+        let it = &d.days["2026-10-15"].items[0];
+        assert_eq!(it.status, ItemStatus::Pending);
+        assert!(it.error.is_some());
     }
 
     #[test]

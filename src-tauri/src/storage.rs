@@ -26,6 +26,15 @@ pub struct LoadOutcome {
     pub lost: bool,
 }
 
+#[derive(Debug)]
+pub struct SettingsOutcome {
+    pub settings: Settings,
+    /// 从备份恢复了
+    pub recovered: bool,
+    /// 损坏且没有备份，回到了默认设置
+    pub reset: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct Store {
     dir: PathBuf,
@@ -94,10 +103,33 @@ impl Store {
     }
 
     pub fn load_settings(&self) -> Settings {
-        fs::read_to_string(self.settings_path())
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
+        self.load_settings_checked().settings
+    }
+
+    /// 读设置；损坏时坏文件留档，从最新的设置备份恢复（API Key、分类都在里面）
+    pub fn load_settings_checked(&self) -> SettingsOutcome {
+        let fresh = |recovered, reset| SettingsOutcome { settings: Settings::default(), recovered, reset };
+        let bytes = match fs::read(self.settings_path()) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return fresh(false, false),
+            Err(e) => {
+                log_read_error(&self.settings_path(), &e);
+                Vec::new()
+            }
+        };
+        if let Some(s) = parse_settings(&bytes) {
+            return SettingsOutcome { settings: s, recovered: false, reset: false };
+        }
+        let stamp = Local::now().format("%Y%m%d-%H%M%S");
+        let _ = fs::rename(self.settings_path(), self.dir.join(format!("settings.corrupt-{stamp}.json")));
+        for name in self.backup_names_with("settings-").into_iter().rev() {
+            let Ok(raw) = fs::read(self.backups_dir().join(&name)) else { continue };
+            if let Some(s) = parse_settings(&raw) {
+                let _ = self.save_settings(&s);
+                return SettingsOutcome { settings: s, recovered: true, reset: false };
+            }
+        }
+        fresh(false, true)
     }
 
     pub fn save_settings(&self, settings: &Settings) -> io::Result<()> {
@@ -113,22 +145,34 @@ impl Store {
         fs::create_dir_all(self.backups_dir())?;
         let name = format!("data-{}.json", now.format("%Y%m%d-%H%M%S"));
         write_atomic(&self.backups_dir().join(name), &raw)?;
-        let names = self.backup_names();
-        if names.len() > MAX_BACKUPS {
-            for old in &names[..names.len() - MAX_BACKUPS] {
-                let _ = fs::remove_file(self.backups_dir().join(old));
+        if let Ok(raw) = fs::read(self.settings_path()) {
+            if parse_settings(&raw).is_some() {
+                let name = format!("settings-{}.json", now.format("%Y%m%d-%H%M%S"));
+                write_atomic(&self.backups_dir().join(name), &raw)?;
+            }
+        }
+        for prefix in ["data-", "settings-"] {
+            let names = self.backup_names_with(prefix);
+            if names.len() > MAX_BACKUPS {
+                for old in &names[..names.len() - MAX_BACKUPS] {
+                    let _ = fs::remove_file(self.backups_dir().join(old));
+                }
             }
         }
         Ok(())
     }
 
-    /// 备份文件名，按时间升序
+    /// data.json 的备份文件名，按时间升序
     fn backup_names(&self) -> Vec<String> {
+        self.backup_names_with("data-")
+    }
+
+    fn backup_names_with(&self, prefix: &str) -> Vec<String> {
         let mut names: Vec<String> = fs::read_dir(self.backups_dir())
             .map(|rd| {
                 rd.filter_map(|e| e.ok())
                     .map(|e| e.file_name().to_string_lossy().to_string())
-                    .filter(|n| n.starts_with("data-") && n.ends_with(".json"))
+                    .filter(|n| n.starts_with(prefix) && n.ends_with(".json"))
                     .collect()
             })
             .unwrap_or_default();
@@ -158,6 +202,11 @@ impl Store {
 fn parse_data(bytes: &[u8]) -> Option<Data> {
     let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
     serde_json::from_slice::<Data>(body).ok()
+}
+
+fn parse_settings(bytes: &[u8]) -> Option<Settings> {
+    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    serde_json::from_slice::<Settings>(body).ok()
 }
 
 fn log_read_error(path: &Path, e: &io::Error) {
@@ -337,6 +386,33 @@ mod tests {
         assert!(!loaded.lost);
         store.backup_on_startup(at("2026-10-15 09:00:00")).unwrap();
         assert_eq!(fs::read_dir(dir.path().join("backups")).unwrap().count(), 1, "带 BOM 的好文件也要备份");
+    }
+
+    #[test]
+    fn corrupt_settings_recovers_from_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        let mut s = Settings::default();
+        s.user_name = "某某".into();
+        s.vision.api_key = "sk-keep".into();
+        store.save_settings(&s).unwrap();
+        store.save_data(&sample_data("x")).unwrap();
+        store.backup_on_startup(at("2026-10-15 09:00:00")).unwrap();
+        fs::write(dir.path().join("settings.json"), "{ broken").unwrap();
+        let out = store.load_settings_checked();
+        assert_eq!(out.settings.vision.api_key, "sk-keep");
+        assert!(out.recovered);
+        assert!(fs::read_dir(dir.path()).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with("settings.corrupt-")));
+    }
+
+    #[test]
+    fn corrupt_settings_without_backup_resets_and_reports() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        fs::write(dir.path().join("settings.json"), "garbage").unwrap();
+        let out = store.load_settings_checked();
+        assert_eq!(out.settings, Settings::default());
+        assert!(out.reset);
     }
 
     #[test]

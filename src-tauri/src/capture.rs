@@ -63,8 +63,26 @@ pub fn grab_all() -> Result<Frozen, String> {
             .collect();
         handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("截屏线程崩溃".into()))).collect()
     });
-    let monitors = results.into_iter().collect::<Result<Vec<_>, _>>()?;
-    Ok(Frozen { taken_at, monitors })
+    Ok(Frozen { taken_at, monitors: collect_monitors(results)? })
+}
+
+/// 只要有一块屏截到就继续；全都失败才报错
+pub fn collect_monitors(results: Vec<Result<FrozenMonitor, String>>) -> Result<Vec<FrozenMonitor>, String> {
+    let mut ok = Vec::new();
+    let mut first_err = None;
+    for r in results {
+        match r {
+            Ok(m) => ok.push(m),
+            Err(e) => {
+                log::warn!("{e}");
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    if ok.is_empty() {
+        return Err(first_err.unwrap_or_else(|| "没有找到显示器".into()));
+    }
+    Ok(ok)
 }
 
 /// 选区坐标可能是负的（鼠标拖出了屏幕左边或上边），裁到 0；裁完没东西了返回 None
@@ -212,6 +230,15 @@ mod tests {
         assert_eq!(clamp_rect(10, 20, 30, 40), Some(PhysRect { x: 10, y: 20, w: 30, h: 40 }));
         assert_eq!(clamp_rect(-100, 0, 50, 50), None);
         assert_eq!(clamp_rect(0, 0, 0, 10), None);
+    }
+
+    #[test]
+    fn one_failed_monitor_does_not_abort() {
+        let ok = FrozenMonitor { index: 1, x: 0, y: 0, width: 2, height: 2, scale: 1.0, image: synthetic(2, 2) };
+        let got = collect_monitors(vec![Err("屏 0 截不到".into()), Ok(ok)]).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].index, 1);
+        assert!(collect_monitors(vec![Err("a".into()), Err("b".into())]).is_err());
     }
 
     #[test]
