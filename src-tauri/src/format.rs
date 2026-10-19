@@ -197,13 +197,21 @@ pub fn for_clipboard(text: &str) -> String {
 }
 
 /// 识图单条：一行、去编号、去 Markdown、去引号、去末尾句号
+/// 单条前面的"1."。提示词要求不加编号，偶尔加了也只会是 1；"3、4月""10:30"是内容，不动
+fn strip_item_number(line: &str) -> &str {
+    match (num_prefix(line), strip_number(line)) {
+        (Some((1, _)), Some(rest)) => rest,
+        _ => line,
+    }
+}
+
 pub fn clean_item(raw: &str) -> String {
     let text = strip_think(raw);
     let parts: Vec<String> = text
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
-        .map(|l| clean_line(strip_number(l).unwrap_or(l)))
+        .map(|l| clean_line(strip_item_number(l)))
         .filter(|l| !l.is_empty())
         .collect();
     let joined = parts.join("，");
@@ -321,6 +329,13 @@ mod tests {
         assert_eq!(for_clipboard("T\n1.a\n- 多写的 **b**"), "T\r\n1.a\r\n多写的 b");
         assert_eq!(for_clipboard("T\r\n1.a\r\n\r\n2.团播头像/背景头图"), "T\r\n1.a\r\n\r\n2.团播头像/背景头图");
         assert_eq!(for_clipboard("# 标题\n1.`x`"), "标题\r\n1.x");
+    }
+
+    #[test]
+    fn clean_item_keeps_leading_digits_that_are_content() {
+        assert_eq!(clean_item("3、4月账单核对"), "3、4月账单核对");
+        assert_eq!(clean_item("10:30开会对接直播排期"), "10:30开会对接直播排期");
+        assert_eq!(clean_item("1、拼多多收入确认填写"), "拼多多收入确认填写");
     }
 
     #[test]

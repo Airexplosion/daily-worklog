@@ -309,7 +309,7 @@ pub async fn generate_summary(app: AppHandle, date: String, on_delta: Channel<St
         .await
         .map_err(|e| e.to_string())?
     };
-    let result = summary::finalize(&raw, &settings, d, &sources, skipped)?;
+    let result = summary::finalize_for(&raw, &settings, d, &sources, skipped, d == views::today())?;
     {
         let mut data = state.data.lock().unwrap();
         summary::record_generated(&mut data, &date, &result.text, &started_at);

@@ -50,14 +50,30 @@ pub fn record_generated(data: &mut crate::model::Data, date: &str, text: &str, s
 }
 
 pub fn finalize(raw: &str, settings: &Settings, date: NaiveDate, sources: &[String], skipped: usize) -> Result<SummaryResult, String> {
+    finalize_for(raw, settings, date, sources, skipped, true)
+}
+
+/// is_today 只影响没有记录时的说法
+pub fn finalize_for(
+    raw: &str,
+    settings: &Settings,
+    date: NaiveDate,
+    sources: &[String],
+    skipped: usize,
+    is_today: bool,
+) -> Result<SummaryResult, String> {
     let title = format::title(settings.user_name.trim(), &settings.title_suffix, date);
     if sources.is_empty() {
+        // 有条目但都还没识别出来：生成只有标题的总结会让人以为生成好了
+        if skipped > 0 {
+            return Err("条目都还没识别出来，先重试或手动写一句".into());
+        }
         return Ok(SummaryResult {
             text: title,
             checks: Vec::new(),
             removed: Vec::new(),
-            skipped_pending: skipped,
-            notice: Some("今天还没记录".into()),
+            skipped_pending: 0,
+            notice: Some(if is_today { "今天还没记录" } else { "这天没有记录" }.into()),
         });
     }
     let cleaned = format::clean_summary(raw);
@@ -182,6 +198,16 @@ mod tests {
         let r = finalize("", &settings(), date(), &[], 0).unwrap();
         assert_eq!(r.text, "张三10.15工作梳理");
         assert_eq!(r.notice.as_deref(), Some("今天还没记录"));
+    }
+
+    #[test]
+    fn notice_wording_by_day() {
+        let past = finalize_for("", &settings(), date(), &[], 0, false).unwrap();
+        assert_eq!(past.notice.as_deref(), Some("这天没有记录"));
+        let today = finalize_for("", &settings(), date(), &[], 0, true).unwrap();
+        assert_eq!(today.notice.as_deref(), Some("今天还没记录"));
+        // 有条目但都没识别出来：不能生成只有标题的总结
+        assert!(finalize_for("", &settings(), date(), &[], 2, true).is_err());
     }
 
     #[test]

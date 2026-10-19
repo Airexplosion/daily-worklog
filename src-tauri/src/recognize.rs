@@ -46,6 +46,33 @@ pub fn should_retry(e: &AiError) -> bool {
     }
 }
 
+/// 识别结果写进条目。只在还"识别中"时写：期间用户已手写完成的不覆盖
+pub fn apply_to_item(item: &mut crate::model::Item, text: &str, tags: &[String], confidence: f32) -> bool {
+    if item.status != ItemStatus::Recognizing {
+        return false;
+    }
+    if !item.edited {
+        item.text = text.to_string();
+    }
+    if item.tags.is_empty() {
+        item.tags = tags.to_vec();
+    }
+    item.confidence = Some(confidence);
+    item.status = ItemStatus::Done;
+    item.error = None;
+    true
+}
+
+/// 识别失败转待处理。同样只动还在"识别中"的条目
+pub fn pend_item(item: &mut crate::model::Item, reason: &str) -> bool {
+    if item.status != ItemStatus::Recognizing {
+        return false;
+    }
+    item.status = ItemStatus::Pending;
+    item.error = Some(reason.to_string());
+    true
+}
+
 pub fn spawn_worker(app: AppHandle) -> mpsc::UnboundedSender<Job> {
     let (tx, mut rx) = mpsc::unbounded_channel::<Job>();
     tauri::async_runtime::spawn(async move {
@@ -138,6 +165,17 @@ fn apply_result(app: &AppHandle, job: &Job, raw: &str) {
     };
     let text = if text.is_empty() { PLACEHOLDER.to_string() } else { text };
     let confidence = if text == PLACEHOLDER { 0.0 } else { confidence };
+    // 条目已被删除或用户已手写完成：不再建标签、不再改
+    let still_recognizing = {
+        let data = state.data.lock().unwrap();
+        data.days
+            .get(&job.date)
+            .and_then(|d| d.items.iter().find(|i| i.id == job.id))
+            .is_some_and(|i| i.status == ItemStatus::Recognizing)
+    };
+    if !still_recognizing {
+        return;
+    }
     let ai_tags = {
         let mut settings = state.settings.lock().unwrap();
         let ai_tags = tags::apply_ai(&settings.tags, &returned_tags, settings.allow_ai_new_tags);
@@ -155,16 +193,9 @@ fn apply_result(app: &AppHandle, job: &Job, raw: &str) {
         let mut data = state.data.lock().unwrap();
         let Some(day) = data.days.get_mut(&job.date) else { return };
         let Some(item) = day.items.iter_mut().find(|i| i.id == job.id) else { return };
-        // 识别期间用户已经手动改过的，保留用户的文字
-        if !item.edited {
-            item.text = text.clone();
+        if !apply_to_item(item, &text, &ai_tags.item_tags, confidence) {
+            return;
         }
-        if item.tags.is_empty() {
-            item.tags = ai_tags.item_tags.clone();
-        }
-        item.confidence = Some(confidence);
-        item.status = ItemStatus::Done;
-        item.error = None;
         let snapshot = item.clone();
         day.items_changed_at = Some(now_iso());
         if let Err(e) = state.store.save_data(&data) {
@@ -195,8 +226,9 @@ fn mark_pending(app: &AppHandle, job: &Job, reason: &str, toast_message: &str) {
         let mut data = state.data.lock().unwrap();
         let Some(day) = data.days.get_mut(&job.date) else { return };
         let Some(item) = day.items.iter_mut().find(|i| i.id == job.id) else { return };
-        item.status = ItemStatus::Pending;
-        item.error = Some(reason.to_string());
+        if !pend_item(item, reason) {
+            return;
+        }
         let note = item.note.clone();
         day.items_changed_at = Some(now_iso());
         if let Err(e) = state.store.save_data(&data) {
@@ -248,6 +280,47 @@ mod tests {
         assert_eq!(m[1]["content"].as_str().unwrap(), "补充说明：整理合同");
         let empty = build_messages(&vision_prompt(&s, true), "  ", Some(&[1]));
         assert_eq!(empty[1]["content"][1]["text"], "补充说明：（无补充说明）");
+    }
+
+    fn item(status: crate::model::ItemStatus, text: &str, edited: bool) -> crate::model::Item {
+        crate::model::Item {
+            id: "x".into(),
+            created_at: String::new(),
+            text: text.into(),
+            note: "补的话".into(),
+            source: crate::model::Source::Ai,
+            edited,
+            tags: vec![],
+            confidence: None,
+            shots: vec![],
+            status,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn result_only_applies_while_recognizing() {
+        use crate::model::ItemStatus;
+        let mut it = item(ItemStatus::Recognizing, "", false);
+        assert!(apply_to_item(&mut it, "百应提现核算", &["百应".to_string()], 0.9));
+        assert_eq!(it.status, ItemStatus::Done);
+        assert_eq!(it.text, "百应提现核算");
+        // 识别期间用户已经手写完成：不覆盖
+        let mut done = item(ItemStatus::Done, "我自己写的", true);
+        assert!(!apply_to_item(&mut done, "AI 的", &[], 0.9));
+        assert_eq!(done.text, "我自己写的");
+    }
+
+    #[test]
+    fn failure_only_pends_while_recognizing() {
+        use crate::model::ItemStatus;
+        let mut it = item(ItemStatus::Recognizing, "", false);
+        assert!(pend_item(&mut it, "没联网"));
+        assert_eq!(it.status, ItemStatus::Pending);
+        let mut done = item(ItemStatus::Done, "我自己写的", true);
+        assert!(!pend_item(&mut done, "没联网"));
+        assert_eq!(done.status, ItemStatus::Done);
+        assert_eq!(done.error, None);
     }
 
     #[test]
