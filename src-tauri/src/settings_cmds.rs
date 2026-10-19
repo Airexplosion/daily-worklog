@@ -273,3 +273,28 @@ pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     }
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
+
+// ───────────── 检查更新 ─────────────
+
+#[tauri::command]
+pub async fn check_update(app: AppHandle, manual: bool) -> Result<crate::update::UpdateInfo, String> {
+    crate::update::check(&app, manual).await
+}
+
+/// 横幅上的"稍后"：这个版本 3 天内不再提示
+#[tauri::command]
+pub fn snooze_update(app: AppHandle, version: String) -> Result<(), String> {
+    let v = semver::Version::parse(&version).map_err(|e| e.to_string())?;
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    crate::update::snooze(&mut s.update, &v, chrono::Local::now().naive_local());
+    state.store.save_settings(&s).map_err(save_err)?;
+    *state.update.lock().unwrap() = None;
+    Ok(())
+}
+
+/// 主窗口打开时问一下：之前查到过的新版本还要不要显示
+#[tauri::command]
+pub fn pending_update(app: AppHandle) -> Option<crate::update::UpdateInfo> {
+    app.state::<AppState>().update.lock().unwrap().clone()
+}

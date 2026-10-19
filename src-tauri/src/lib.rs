@@ -15,6 +15,7 @@ pub mod storage;
 pub mod summary;
 pub mod system;
 pub mod tags;
+pub mod update;
 pub mod views;
 pub mod windows;
 
@@ -151,6 +152,7 @@ pub fn run() {
                 log::error!("托盘图标创建失败：{e}");
             }
             system::spawn_reminder_loop(app.handle().clone());
+            update::spawn_checker(app.handle().clone());
             if app.state::<AppState>().settings.lock().unwrap().onboarding_done {
                 system::sync_autostart(app.handle());
             }
@@ -205,6 +207,9 @@ pub fn run() {
             settings_cmds::finish_onboarding,
             settings_cmds::open_data_dir,
             settings_cmds::open_url,
+            settings_cmds::check_update,
+            settings_cmds::snooze_update,
+            settings_cmds::pending_update,
             commands::dismiss_missed,
             commands::dismiss_recovered,
         ])

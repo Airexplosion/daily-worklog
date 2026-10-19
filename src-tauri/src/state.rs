@@ -51,6 +51,8 @@ pub struct AppState {
     /// 删除后 5 秒内可撤销的条目
     pub trash: Mutex<Trash>,
     pub status: Mutex<StartupStatus>,
+    /// 最近一次发现的新版本（横幅用）
+    pub update: Mutex<Option<crate::update::UpdateInfo>>,
 }
 
 impl AppState {
@@ -68,6 +70,7 @@ impl AppState {
             queue: Mutex::new(None),
             trash: Mutex::new(Trash::default()),
             status: Mutex::new(StartupStatus::default()),
+            update: Mutex::new(None),
         }
     }
 }
