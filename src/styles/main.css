@@ -157,3 +157,27 @@ kbd {
 .page-ft.wide { padding-right: 24px; }
 .btn.accent-outline { border-color: var(--accent); color: var(--accent); }
 .btn .ico { width: 16px; height: 16px; }
+
+/* 历史 */
+.history-body { flex: 1; min-height: 0; display: flex; gap: 14px; padding: 0 24px 20px; }
+.days { width: 168px; flex-shrink: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.days .month { font-size: 12px; color: var(--text-3); padding: 8px 8px 4px; }
+.days .day {
+  display: flex; justify-content: space-between; align-items: center; height: 34px; padding: 0 8px; border: 1px solid transparent;
+  border-radius: var(--radius-control); background: transparent; font-size: 13px; text-align: left;
+}
+.days .day:hover { background: rgba(0, 0, 0, .04); }
+.days .day.on { background: var(--bg-card); border-color: var(--stroke); font-weight: 600; }
+.days .st { font-size: 11px; padding: 0 6px; border-radius: 3px; font-weight: 400; }
+.days .st.g { color: var(--success); background: var(--success-soft); }
+.days .st.p { color: var(--warn-text); background: var(--warn-bg); }
+.detail { flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.detail .lb { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); margin-top: 4px; }
+.detail .lb > span:first-child { flex: 1; }
+.detail .lb .input { height: 28px; max-width: 320px; }
+.doc2 {
+  background: var(--bg-card); border: 1px solid var(--stroke); border-radius: var(--radius-card); padding: 12px 14px;
+  font-size: 13.5px; line-height: 1.8; white-space: pre-wrap; user-select: text;
+}
+.doc2.none { display: flex; align-items: center; justify-content: space-between; color: var(--text-2); }
+.detail .empty { height: 160px; }
