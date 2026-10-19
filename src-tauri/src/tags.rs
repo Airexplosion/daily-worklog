@@ -79,7 +79,11 @@ pub fn rename(data: &mut Data, settings: &mut Settings, from: &str, to: &str) {
         return;
     }
     let to_key = to.to_lowercase();
-    let target = settings.tags.iter().find(|t| key(&t.name).as_deref() == Some(to_key.as_str())).map(|t| t.name.clone());
+    let target = settings
+        .tags
+        .iter()
+        .find(|t| t.name != from && key(&t.name).as_deref() == Some(to_key.as_str()))
+        .map(|t| t.name.clone());
     match target {
         Some(existing) => {
             settings.tags.retain(|t| t.name != from);
@@ -226,6 +230,16 @@ mod tests {
         rename(&mut data, &mut st, "会议", "例会");
         assert_eq!(st.tags[0].name, "例会");
         assert_eq!(data.days["2026-10-15"].items[0].tags, s(&["例会"]));
+    }
+
+    #[test]
+    fn rename_case_variant_renames_in_place() {
+        let mut data = data_with(vec![item("1", &["ppt"])]);
+        let mut st = Settings::default();
+        st.tags = vec![def("ppt"), def("项目乙")];
+        rename(&mut data, &mut st, "ppt", "PPT");
+        assert_eq!(st.tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), vec!["PPT", "项目乙"]);
+        assert_eq!(data.days["2026-10-15"].items[0].tags, s(&["PPT"]));
     }
 
     #[test]

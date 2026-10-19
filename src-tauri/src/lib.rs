@@ -159,9 +159,25 @@ pub fn run() {
             if let Err(e) = windows::ensure_overlays_for(app.handle(), &windows::monitor_geometry()) {
                 log::error!("创建框选窗口失败：{e}");
             }
-            // 开机自启（带 --autostart）只进托盘，手动打开时显示主窗口
-            if !std::env::args().any(|a| a == "--autostart") {
+            // 开机自启（带 --autostart）只进托盘，手动打开时显示主窗口。
+            // 走完引导的先把主窗口建好藏着，之后从托盘打开不用现建
+            let autostart = std::env::args().any(|a| a == "--autostart");
+            if app.state::<AppState>().settings.lock().unwrap().onboarding_done {
+                match windows::build_main(app.handle()) {
+                    Ok(w) if !autostart => {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                    Ok(_) => {}
+                    Err(e) => log::error!("创建主窗口失败：{e}"),
+                }
+            } else if !autostart {
                 windows::show_main(app.handle());
+            }
+            if autostart {
+                if let Some(bad) = app.state::<AppState>().status.lock().unwrap().hotkey_error.clone() {
+                    system::notify_hotkey_failed(app.handle().clone(), bad);
+                }
             }
             log::info!("启动完成，数据目录 {}", store.dir().display());
             Ok(())
@@ -176,6 +192,7 @@ pub fn run() {
             commands::note_skip,
             commands::toast_hide,
             commands::toast_open_item,
+            commands::take_main_intent,
             commands::today,
             commands::get_day,
             commands::get_tags,

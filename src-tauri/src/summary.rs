@@ -44,25 +44,34 @@ pub fn build_messages(settings: &Settings, sources: &[String]) -> Value {
 }
 
 /// 清洗模型输出、拼上代码生成的标题、做检查
-pub fn finalize(raw: &str, settings: &Settings, date: NaiveDate, sources: &[String], skipped: usize) -> SummaryResult {
+/// 存为当天的总结。生成时间用"开始生成"的时刻：生成过程中识别完的条目会让它显示为过期
+pub fn record_generated(data: &mut crate::model::Data, date: &str, text: &str, started_at: &str) {
+    set_generated(data.days.entry(date.to_string()).or_default(), text, started_at);
+}
+
+pub fn finalize(raw: &str, settings: &Settings, date: NaiveDate, sources: &[String], skipped: usize) -> Result<SummaryResult, String> {
     let title = format::title(settings.user_name.trim(), &settings.title_suffix, date);
     if sources.is_empty() {
-        return SummaryResult {
+        return Ok(SummaryResult {
             text: title,
             checks: Vec::new(),
             removed: Vec::new(),
             skipped_pending: skipped,
             notice: Some("今天还没记录".into()),
-        };
+        });
     }
     let cleaned = format::clean_summary(raw);
-    SummaryResult {
+    // 有记录却没整理出任何一条：多半是 AI 中途断了或只输出了思考，别当成功保存
+    if cleaned.lines.is_empty() {
+        return Err("AI 没有返回内容，再生成一次试试".into());
+    }
+    Ok(SummaryResult {
         text: format::compose(&title, &cleaned.lines),
         checks: format::check(&cleaned.lines, sources, &settings.banned_words),
         removed: cleaned.removed,
         skipped_pending: skipped,
         notice: None,
-    }
+    })
 }
 
 /// 存为新生成的总结；原来那版留着，供"撤销重新生成"
@@ -145,7 +154,7 @@ mod tests {
     #[test]
     fn finalize_adds_title_and_cleans() {
         let sources = vec!["项目甲周报整理提交".to_string(), "项目乙报销，计算。".to_string()];
-        let r = finalize("某某10.15工作梳理\n1. **项目甲周报整理提交**\n2. 项目乙报销，计算。", &settings(), date(), &sources, 1);
+        let r = finalize("某某10.15工作梳理\n1. **项目甲周报整理提交**\n2. 项目乙报销，计算。", &settings(), date(), &sources, 1).unwrap();
         assert_eq!(r.text, "某某10.15工作梳理\r\n1.项目甲周报整理提交\r\n2.项目乙报销，计算。");
         assert_eq!(r.removed, vec!["某某10.15工作梳理"]);
         assert_eq!(r.skipped_pending, 1);
@@ -153,8 +162,24 @@ mod tests {
     }
 
     #[test]
+    fn empty_reply_with_sources_is_error() {
+        let sources = vec!["项目甲周报整理提交".to_string()];
+        assert!(finalize("", &settings(), date(), &sources, 0).is_err());
+        assert!(finalize("<think>想了想</think>", &settings(), date(), &sources, 0).is_err());
+    }
+
+    #[test]
+    fn item_finished_during_generation_marks_stale() {
+        let mut data = crate::model::Data::default();
+        // 开始生成时（18:00:00）读了当天；生成期间（18:00:05）有条目识别完
+        data.days.insert("2026-10-15".into(), Day { items_changed_at: Some("2026-10-15T18:00:05+08:00".into()), ..Default::default() });
+        record_generated(&mut data, "2026-10-15", "某某10.15工作梳理", "2026-10-15T18:00:00+08:00");
+        assert!(crate::views::is_stale(&data.days["2026-10-15"]));
+    }
+
+    #[test]
     fn zero_items_title_only() {
-        let r = finalize("", &settings(), date(), &[], 0);
+        let r = finalize("", &settings(), date(), &[], 0).unwrap();
         assert_eq!(r.text, "某某10.15工作梳理");
         assert_eq!(r.notice.as_deref(), Some("今天还没记录"));
     }

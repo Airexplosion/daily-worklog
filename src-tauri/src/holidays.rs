@@ -46,6 +46,11 @@ impl Calendar {
         cal
     }
 
+    /// 打包的数据里没有今年：只能按周一到周五判断，需要更新软件
+    pub fn stale_for(&self, today: NaiveDate) -> bool {
+        !self.has_year(today.year())
+    }
+
     pub fn has_year(&self, year: i32) -> bool {
         self.years.contains(&year)
     }
@@ -85,6 +90,13 @@ mod tests {
         let cal = Calendar::bundled();
         assert!(cal.is_workday(d(2026, 10, 15))); // 周四
         assert!(!cal.is_workday(d(2026, 10, 18))); // 周日
+    }
+
+    #[test]
+    fn data_stale_when_year_missing() {
+        let cal = Calendar::bundled();
+        assert!(!cal.stale_for(d(2026, 10, 15)));
+        assert!(cal.stale_for(d(2030, 1, 2)));
     }
 
     #[test]

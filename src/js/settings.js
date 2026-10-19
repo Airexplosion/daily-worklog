@@ -98,7 +98,7 @@ export function mountSettings(host) {
     body.append(section('使用习惯',
       row('截图快捷键', '点一下，再按新的组合', hotkeyRecorder(s.hotkey, () => flash())),
       row('下班提醒时间', null, time),
-      row('只在工作日提醒', '自动跳过法定节假日，调休上班照常提醒', toggle(s.weekdayOnly, (on) => save({ weekdayOnly: on }))),
+      row('只在工作日提醒', view.holidayStale ? '节假日数据过期（没有今年的），暂时按周一到周五提醒，请更新软件' : '自动跳过法定节假日，调休上班照常提醒', toggle(s.weekdayOnly, (on) => save({ weekdayOnly: on }))),
       row('开机自动启动', '在右下角托盘待命，不弹窗', toggle(s.autoStart, (on) => save({ autoStart: on }))),
       row('截图保留天数', '超过的原图自动删除，文字记录一直保留', days),
     ));
