@@ -2,6 +2,7 @@ pub mod model;
 pub mod storage;
 pub mod format;
 pub mod ai;
+pub mod tags;
 
 pub fn run() {
     tauri::Builder::default()
