@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { icons } from './icons.js';
 import { mountToday } from './today.js';
 import { mountSummary } from './summary.js';
+import { mountHistory } from './history.js';
 import { h } from './ui.js';
 
 const content = /** @type {HTMLElement} */ (document.getElementById('content'));
@@ -14,7 +15,7 @@ const banners = h('div', { class: 'banners' });
 /** @type {Record<string, {label: string, icon: string, mount: (host: HTMLElement) => any}>} */
 const pages = {
   today: { label: '今日', icon: icons.today, mount: (host) => mountToday(host, { banners }) },
-  history: { label: '历史', icon: icons.history, mount: (host) => placeholder(host, '历史') },
+  history: { label: '历史', icon: icons.history, mount: (host) => mountHistory(host) },
   settings: { label: '设置', icon: icons.settings, mount: (host) => placeholder(host, '设置') },
 };
 

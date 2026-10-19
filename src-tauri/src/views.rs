@@ -82,6 +82,34 @@ pub struct TagView {
     pub is_new: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayListItem {
+    pub date: String,
+    /// "10.15 周四"
+    pub label: String,
+    pub count: usize,
+    pub generated: bool,
+}
+
+/// 历史页左侧：有记录的日子，日期倒序
+pub fn list_days(data: &crate::model::Data) -> Vec<DayListItem> {
+    data.days
+        .iter()
+        .rev()
+        .filter(|(_, d)| !d.items.is_empty())
+        .filter_map(|(k, d)| {
+            let date = parse_date(k)?;
+            Some(DayListItem {
+                date: k.clone(),
+                label: format!("{}.{} {}", date.month(), date.day(), weekday_cn(date.weekday())),
+                count: d.items.len(),
+                generated: d.summary.is_some(),
+            })
+        })
+        .collect()
+}
+
 pub fn tag_views(tags: &[TagDef], today: NaiveDate) -> Vec<TagView> {
     tags.iter()
         .map(|t| TagView { name: t.name.clone(), by_ai: t.created_by == TagOrigin::Ai, is_new: is_new_tag(t, today) })
@@ -103,6 +131,25 @@ mod tests {
         assert_eq!(day_label(d("2026-10-15")), "10月15日 周四");
         assert_eq!(day_label(d("2026-11-03")), "11月3日 周二");
         assert_eq!(day_label(d("2026-10-18")), "10月18日 周日");
+    }
+
+    #[test]
+    fn list_days_sorted_desc_with_flags() {
+        use crate::model::{Data, Item, ItemStatus, Source};
+        let it = || Item {
+            id: "x".into(), created_at: String::new(), text: "t".into(), note: String::new(), source: Source::Ai,
+            edited: false, tags: vec![], confidence: None, shots: vec![], status: ItemStatus::Done, error: None,
+        };
+        let mut data = Data::default();
+        data.days.insert("2026-10-14".into(), Day { items: vec![it(), it()], ..Default::default() });
+        data.days.insert("2026-10-16".into(), Day { items: vec![it()], summary: Some(Summary::default()), ..Default::default() });
+        data.days.insert("2026-10-15".into(), Day::default()); // 只点过"今天不再提醒"，没记录
+        let list = list_days(&data);
+        assert_eq!(list.iter().map(|d| d.date.as_str()).collect::<Vec<_>>(), vec!["2026-10-16", "2026-10-14"]);
+        assert_eq!(list[0].label, "10.16 周五");
+        assert!(list[0].generated);
+        assert_eq!(list[1].count, 2);
+        assert!(!list[1].generated);
     }
 
     #[test]

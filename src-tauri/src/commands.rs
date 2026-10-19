@@ -394,3 +394,12 @@ pub fn dismiss_recovered(app: AppHandle) {
     status.recovered_from = None;
     status.data_lost = false;
 }
+
+// ───────────── 历史 ─────────────
+
+#[tauri::command]
+pub fn list_days(app: AppHandle) -> Vec<views::DayListItem> {
+    let state = app.state::<AppState>();
+    let data = state.data.lock().unwrap();
+    views::list_days(&data)
+}

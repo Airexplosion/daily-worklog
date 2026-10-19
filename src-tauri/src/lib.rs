@@ -188,6 +188,7 @@ pub fn run() {
             commands::undo_regenerate,
             commands::copy_text,
             commands::get_status,
+            commands::list_days,
             commands::dismiss_missed,
             commands::dismiss_recovered,
         ])
