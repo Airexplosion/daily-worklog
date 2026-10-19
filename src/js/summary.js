@@ -34,13 +34,20 @@ export function mountSummary(host, date, opts) {
 
   let busy = false;
   let saveTimer = 0;
+  let dirty = false;
+
+  const flushSave = async () => {
+    clearTimeout(saveTimer);
+    if (!dirty) return;
+    dirty = false;
+    await invoke('save_summary', { date, text: doc.value }).catch((e) => toast(errText(e)));
+    sub.textContent = '已手动修改 · 已自动保存';
+  };
 
   doc.addEventListener('input', () => {
+    dirty = true;
     clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(() => {
-      invoke('save_summary', { date, text: doc.value }).catch((e) => toast(errText(e)));
-      sub.textContent = '已手动修改 · 已自动保存';
-    }, 600);
+    saveTimer = window.setTimeout(flushSave, 600);
   });
 
   copy.addEventListener('click', async () => {
@@ -61,9 +68,7 @@ export function mountSummary(host, date, opts) {
     if (r && r.removed.length) {
       checks.append(h('div', { class: 'chk info' }, `已去掉 AI 多写的：${r.removed.join(' / ')}`));
     }
-    if (r && r.skippedPending) {
-      checks.append(h('div', { class: 'chk warn' }, `还有 ${r.skippedPending} 条没识别出来或待补充，没算进去`));
-    }
+    if (r && r.skippedPending) checks.append(pendingNotice(r.skippedPending));
     if (list.length === 0 && r && !r.notice) {
       checks.append(h('div', { class: 'chk ok', html: `${icons.check}<span>编号连续 · 无多余符号 · 没有新增人名数字</span>` }));
     }
@@ -71,10 +76,15 @@ export function mountSummary(host, date, opts) {
     [...checks.querySelectorAll('.chk.warn span')].forEach((s, i) => { s.textContent = list[i]?.msg ?? ''; });
   }
 
+  /** @param {number} n */
+  const pendingNotice = (n) => h('div', { class: 'chk warn' }, `还有 ${n} 条待处理，没算进去`);
+
   /** @param {boolean} isRegen */
   async function generate(isRegen) {
     if (busy) return;
     busy = true;
+    // 先把还没来得及自动保存的手改存掉，"撤销重新生成"才能回到它
+    await flushSave();
     regen.toggleAttribute('disabled', true);
     copy.toggleAttribute('disabled', true);
     doc.readOnly = true;
@@ -82,6 +92,9 @@ export function mountSummary(host, date, opts) {
     doc.value = '';
     checks.innerHTML = '';
     sub.textContent = '正在生成…';
+    const before0 = await api.getDay(date);
+    const pendingNow = before0.items.filter((i) => i.status !== 'done' || i.text === '（待补充）').length;
+    if (pendingNow) checks.append(pendingNotice(pendingNow));
     // 打字机：收到的片段先排队，每帧吐几个字
     let queue = '';
     let streaming = true;

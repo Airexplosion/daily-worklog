@@ -27,7 +27,7 @@ export function h(tag, props = {}, ...children) {
 let toastTimer = 0;
 
 /**
- * 窗口底部的小提示，可带一个操作（如"撤销"）
+ * 窗口右下角的小提示，可带一个操作（如"撤销"）
  * @param {string} message
  * @param {{label: string, run: () => void}} [action]
  * @param {number} [ms]

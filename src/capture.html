@@ -18,6 +18,9 @@
     #cx { left: 0; right: 0; height: 1px; }
     #cy { top: 0; bottom: 0; width: 1px; }
     body.selecting #dim { display: none; }
+    body.backdrop { cursor: default; }
+    body.backdrop #dim { display: block; background: rgba(0, 0, 0, 0.3); }
+    body.backdrop #sel, body.backdrop #size, body.backdrop #hint, body.backdrop .cross { display: none; }
   </style>
 </head>
 <body>

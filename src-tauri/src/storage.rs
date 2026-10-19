@@ -224,7 +224,18 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
         f.write_all(bytes)?;
         f.sync_all()?;
     }
-    fs::rename(&tmp, path)
+    // 杀毒软件、同步盘偶尔会短暂占用文件，重试几次
+    let mut tries = 0;
+    loop {
+        match fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) if tries < 5 && e.kind() == io::ErrorKind::PermissionDenied => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(60));
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 #[cfg(test)]

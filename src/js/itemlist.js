@@ -100,11 +100,26 @@ function row(item, n, opts) {
   return el;
 }
 
+/** 5 秒撤销期内连续删除的算一组，撤销时一起恢复 */
+let undoTokens = /** @type {string[]} */ ([]);
+let lastDeleteAt = 0;
+
 /** @param {Item} item */
 async function remove(item) {
   try {
     const token = await api.deleteItem(item.id);
-    toast('已删除', { label: '撤销', run: () => api.undoDelete(token).catch((e) => toast(errText(e))) });
+    if (Date.now() - lastDeleteAt > 5000) undoTokens = [];
+    lastDeleteAt = Date.now();
+    undoTokens.push(token);
+    const tokens = [...undoTokens];
+    toast(tokens.length > 1 ? `已删除 ${tokens.length} 条` : '已删除', {
+      label: '撤销',
+      run: async () => {
+        undoTokens = [];
+        // 后删的先恢复，原来的位置才对得上
+        for (const t of tokens.reverse()) await api.undoDelete(t).catch((e) => toast(errText(e)));
+      },
+    });
   } catch (e) {
     toast(errText(e));
   }

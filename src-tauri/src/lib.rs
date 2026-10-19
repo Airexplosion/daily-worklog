@@ -118,7 +118,8 @@ pub fn run() {
             if interrupted {
                 let _ = store.save_data(&loaded.data);
             }
-            let settings = store.load_settings();
+            let settings_out = store.load_settings_checked();
+            let settings = settings_out.settings;
             let hotkey = settings.hotkey.clone();
             let retention = settings.shots_retention_days;
             app.manage(AppState::new(store.clone(), loaded.data, settings));
@@ -127,6 +128,8 @@ pub fn run() {
                 let mut status = state.status.lock().unwrap();
                 status.recovered_from = loaded.recovered_from.clone();
                 status.data_lost = loaded.lost;
+                status.settings_recovered = settings_out.recovered;
+                status.settings_reset = settings_out.reset;
             }
             if let Some(name) = &loaded.recovered_from {
                 log::warn!("data.json 损坏，已从备份 {name} 恢复");

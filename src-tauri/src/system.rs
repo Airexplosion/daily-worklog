@@ -49,7 +49,14 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "capture" => crate::flow::start_capture(app.clone()),
+            "capture" => {
+                // 等托盘菜单淡出，免得被截进定格画面
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    crate::flow::start_capture(app);
+                });
+            }
             "open" => {
                 windows::show_main(app);
             }
@@ -62,8 +69,14 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 windows::show_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
+    // 托盘用 32px 的图，缩放 125%/150% 时系统缩小得更清楚（默认窗口图标取的是 256px）
+    match tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")) {
+        Ok(icon) => builder = builder.icon(icon),
+        Err(_) => {
+            if let Some(icon) = app.default_window_icon() {
+                builder = builder.icon(icon.clone());
+            }
+        }
     }
     builder.build(app)?;
     Ok(())
@@ -157,7 +170,25 @@ pub fn spawn_reminder_loop(app: AppHandle) {
     });
 }
 
+/// 一直挂在托盘里的也要清理过期截图：日期变了就清一次
+fn purge_daily(app: &AppHandle) {
+    static LAST: std::sync::Mutex<Option<chrono::NaiveDate>> = std::sync::Mutex::new(None);
+    let today = chrono::Local::now().date_naive();
+    let mut last = LAST.lock().unwrap();
+    if *last == Some(today) {
+        return;
+    }
+    *last = Some(today);
+    let state = app.state::<AppState>();
+    let days = state.settings.lock().unwrap().shots_retention_days;
+    let n = state.store.purge_shots(days, today);
+    if n > 0 {
+        log::info!("清理了 {n} 张超过 {days} 天的截图");
+    }
+}
+
 fn check_reminder(app: &AppHandle) {
+    purge_daily(app);
     let state = app.state::<AppState>();
     // 正在截图时先不打扰，下一轮再看
     if state.capturing.load(std::sync::atomic::Ordering::SeqCst) {
