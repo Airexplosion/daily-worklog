@@ -4,6 +4,7 @@ pub mod format;
 pub mod ai;
 pub mod tags;
 pub mod holidays;
+pub mod reminder;
 
 pub fn run() {
     tauri::Builder::default()
