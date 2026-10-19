@@ -26,7 +26,14 @@ pub fn monitor_geometry() -> Vec<(i32, i32, u32, u32)> {
 
 pub fn ensure_overlays(app: &AppHandle, frozen: &Frozen) -> tauri::Result<()> {
     let geometry: Vec<(i32, i32, u32, u32)> = frozen.monitors.iter().map(|m| (m.x, m.y, m.width, m.height)).collect();
-    ensure_overlays_for(app, &geometry)
+    ensure_overlays_for(app, &geometry)?;
+    // 改了显示缩放、显示器重新接上时几何没变但窗口尺寸可能不对：每次都重新摆一遍
+    for m in &frozen.monitors {
+        if let Some(w) = app.get_webview_window(&overlay_label(m.index)) {
+            let _ = place_physical(&w, m.x, m.y, m.width, m.height);
+        }
+    }
+    Ok(())
 }
 
 /// 每块屏一个框选窗口，按这块屏的物理范围摆放；显示器变了就重建
@@ -70,22 +77,39 @@ struct CaptureStart {
     url: String,
 }
 
+/// 带上这块屏的物理宽度，页面用它换算缩放比例（比 devicePixelRatio 更可靠）
 pub fn frozen_url(frozen: &Frozen, index: usize) -> String {
-    format!("http://frozen.localhost/{}?t={}", index, frozen.taken_at.timestamp_millis())
+    let width = frozen.monitors.iter().find(|m| m.index == index).map_or(0, |m| m.width);
+    format!("http://frozen.localhost/{}?t={}&w={}", index, frozen.taken_at.timestamp_millis(), width)
 }
 
 /// 通知每个框选窗口加载自己那块屏的定格画面；画面加载完页面会调用 overlay_ready。
 /// 刚建好、脚本还没跑起来的页面收不到这个通知，它启动时会用 overlay_init 自己来要
-pub fn start_overlays(app: &AppHandle, frozen: &Frozen) {
-    for m in &frozen.monitors {
-        let _ = app.emit_to(overlay_label(m.index), "capture:start", CaptureStart { url: frozen_url(frozen, m.index) });
+pub fn start_overlays(app: &AppHandle, urls: Vec<(usize, String)>) {
+    for (index, url) in urls {
+        let _ = app.emit_to(overlay_label(index), "capture:start", CaptureStart { url });
     }
 }
 
 pub fn hide_overlays(app: &AppHandle) {
     for w in overlay_windows(app) {
         let _ = w.hide();
+        let _ = w.set_ignore_cursor_events(false);
         let _ = w.emit_to(w.label(), "capture:reset", ());
+    }
+}
+
+/// 截图那块屏的框选窗口变成补充框的变暗背景（不接收鼠标），其他屏的收起
+pub fn keep_backdrop(app: &AppHandle, index: usize) {
+    let keep = overlay_label(index);
+    for w in overlay_windows(app) {
+        if w.label() == keep {
+            let _ = w.set_ignore_cursor_events(true);
+            let _ = w.emit_to(w.label(), "capture:backdrop", ());
+        } else {
+            let _ = w.hide();
+            let _ = w.emit_to(w.label(), "capture:reset", ());
+        }
     }
 }
 

@@ -51,6 +51,13 @@ async function renderBanners() {
       h('span', { class: 'tx' }, `截图快捷键 ${s.hotkeyError} 用不了，可能被别的软件占用了`),
       h('button', { class: 'btn small', onclick: () => go('settings') }, '去设置里换一个')));
   }
+  if (s.settingsRecovered || s.settingsReset) {
+    banners.append(h('div', { class: `banner${s.settingsReset ? ' error' : ''}` },
+      h('span', { class: 'tx' }, s.settingsReset ? '设置文件损坏，而且没有备份，已恢复默认设置' : '设置文件损坏，已从备份恢复',
+        h('small', {}, s.settingsReset ? '请到设置里重新填一下 API Key 等信息' : '如果有最近改过的设置没生效，再改一次即可')),
+      s.settingsReset ? h('button', { class: 'btn small', onclick: () => go('settings') }, '去设置') : null,
+      h('button', { class: 'btn small', onclick: () => invoke('dismiss_recovered').then(renderBanners) }, '知道了')));
+  }
   if (s.dataLost) {
     banners.append(h('div', { class: 'banner error' },
       h('span', { class: 'tx' }, '数据文件损坏，而且没有可用的备份，只能从空白开始', h('small', {}, '坏掉的文件已另存在数据文件夹里，没有删除')),
@@ -66,7 +73,7 @@ async function renderBanners() {
   const up = await invoke('pending_update');
   if (up) {
     banners.append(h('div', { class: 'banner info' },
-      h('span', { class: 'tx' }, `有新版本 v${up.latest}`, h('small', {}, `GitHub 打不开？找${up.publisher}要安装包`)),
+      h('span', { class: 'tx' }, `有新版本 v${up.latest}`, h('small', {}, `打不开？找${up.publisher}要安装包`)),
       h('button', { class: 'btn small', onclick: () => invoke('snooze_update', { version: up.latest }).then(renderBanners) }, '稍后'),
       h('button', { class: 'btn small accent', onclick: () => invoke('open_url', { url: up.url }) }, '去下载')));
   }

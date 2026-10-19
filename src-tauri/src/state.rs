@@ -39,6 +39,10 @@ pub struct StartupStatus {
     pub hotkey_error: Option<String>,
     pub recovered_from: Option<String>,
     pub data_lost: bool,
+    /// settings.json 损坏，从备份恢复了
+    pub settings_recovered: bool,
+    /// settings.json 损坏且没有备份，回到了默认设置
+    pub settings_reset: bool,
 }
 
 pub struct AppState {
@@ -62,6 +66,8 @@ pub struct AppState {
     /// 最近一次发现的新版本（横幅用）
     pub update: Mutex<Option<crate::update::UpdateInfo>>,
     pub main_intent: Mutex<Option<MainIntent>>,
+    /// 从主窗口点"截一张"时主窗口先藏起来，截完（或取消）再叫回来
+    pub restore_main: AtomicBool,
 }
 
 impl AppState {
@@ -81,6 +87,7 @@ impl AppState {
             status: Mutex::new(StartupStatus::default()),
             update: Mutex::new(None),
             main_intent: Mutex::new(None),
+            restore_main: AtomicBool::new(false),
         }
     }
 }

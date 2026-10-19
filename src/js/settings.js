@@ -4,6 +4,7 @@
 import { section, row, toggle, field, select, chips, hotkeyRecorder, savePatch } from './controls.js';
 import { icons } from './icons.js';
 import { h, toast, errText } from './ui.js';
+import { showGuide } from './guide.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -107,6 +108,7 @@ export function mountSettings(host) {
     body.append(section('数据与关于',
       row('数据文件夹', view.dataDir, h('button', { class: 'btn', html: `${icons.folder}<span>打开</span>`, onclick: () => invoke('open_data_dir').catch((e) => toast(errText(e))) })),
       row('版本', `每日工作梳理 v${view.version}`, updateChecker()),
+      row('首次安装说明', '装不上、被拦截、数据在哪，都写在这里', h('button', { class: 'btn', onclick: showGuide }, '查看')),
     ));
   }
 

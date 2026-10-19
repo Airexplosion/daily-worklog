@@ -275,6 +275,7 @@ pub fn capture_from_main(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
     }
+    app.state::<AppState>().restore_main.store(true, std::sync::atomic::Ordering::SeqCst);
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(250));
         flow::start_capture(app);
@@ -367,6 +368,8 @@ pub struct StatusView {
     pub hotkey_error: Option<String>,
     pub recovered_from: Option<String>,
     pub data_lost: bool,
+    pub settings_recovered: bool,
+    pub settings_reset: bool,
     pub missed: Option<MissedView>,
 }
 
@@ -386,6 +389,8 @@ pub fn get_status(app: AppHandle) -> StatusView {
         hotkey_error: status.hotkey_error,
         recovered_from: status.recovered_from,
         data_lost: status.data_lost,
+        settings_recovered: status.settings_recovered,
+        settings_reset: status.settings_reset,
         missed,
     }
 }
@@ -404,6 +409,8 @@ pub fn dismiss_recovered(app: AppHandle) {
     let mut status = state.status.lock().unwrap();
     status.recovered_from = None;
     status.data_lost = false;
+    status.settings_recovered = false;
+    status.settings_reset = false;
 }
 
 // ───────────── 历史 ─────────────

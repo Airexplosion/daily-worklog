@@ -27,8 +27,11 @@ function reset() {
   document.body.classList.remove('selecting');
 }
 
+/** 这块屏的物理宽度（定格画面地址里带的 w），换算比例比 devicePixelRatio 更可靠 */
+let physWidth = 0;
+const scale = () => (physWidth > 0 ? physWidth / window.innerWidth : window.devicePixelRatio);
 /** @param {number} v */
-const phys = (v) => Math.round(v * window.devicePixelRatio);
+const phys = (v) => Math.round(v * scale());
 /** 鼠标可能拖到别的屏上，坐标限制在本屏内 */
 const clampX = (/** @type {number} */ v) => Math.min(Math.max(v, 0), window.innerWidth);
 const clampY = (/** @type {number} */ v) => Math.min(Math.max(v, 0), window.innerHeight);
@@ -111,6 +114,8 @@ window.addEventListener('keydown', (e) => {
  */
 function load(url) {
   reset();
+  document.body.classList.remove('backdrop');
+  physWidth = Number(new URL(url).searchParams.get('w')) || 0;
   bg.classList.remove('ready');
   bg.onload = () => bg.classList.add('ready');
   bg.src = url;
@@ -122,8 +127,16 @@ current.listen('capture:start', (/** @type {{payload: {url: string}}} */ ev) => 
 // 页面刚建好时可能错过了 capture:start，主动问一次
 invoke('overlay_init', { index }).then((url) => { if (url) load(/** @type {string} */ (url)); });
 
+// 选完区域后，这块屏的框选窗口变成补充框背后的变暗背景（不再接收鼠标）
+current.listen('capture:backdrop', () => {
+  reset();
+  busy = true;
+  document.body.classList.add('backdrop');
+});
+
 current.listen('capture:reset', () => {
   reset();
+  document.body.classList.remove('backdrop');
   bg.classList.remove('ready');
   bg.removeAttribute('src');
 });

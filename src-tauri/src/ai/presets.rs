@@ -66,7 +66,7 @@ const PRESETS: &[Preset] = &[
         summary_model: "deepseek-chat",
         help_url: "https://platform.deepseek.com/api_keys",
         can_vision: false,
-        note: "这家不能看图，将只根据你补的那句话生成条目",
+        note: "这家不能看图，将只根据你补的那句话生成条目；想让 AI 看截图，可以把服务商换成能识图的，再在「高级：写总结用另一家」里填 DeepSeek",
     },
     Preset {
         id: "custom",

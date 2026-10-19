@@ -22,8 +22,13 @@ pub fn start_capture(app: AppHandle) {
         }
         return;
     }
+    let toast_was_visible = app.get_webview_window("toast").and_then(|w| w.is_visible().ok()).unwrap_or(false);
     windows::hide_toast(&app);
     std::thread::spawn(move || {
+        // 上一条的提示窗刚藏起来，等它真的消失再截
+        if toast_was_visible {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }
         let t0 = Instant::now();
         let state = app.state::<AppState>();
         let frozen = match capture::grab_all() {
@@ -43,9 +48,14 @@ pub fn start_capture(app: AppHandle) {
         let taken_at = frozen.taken_at;
         *state.frozen.lock().unwrap() = Some(frozen);
         state.overlay_shown.store(false, Ordering::SeqCst);
-        if let Some(f) = state.frozen.lock().unwrap().as_ref() {
-            windows::start_overlays(&app, f);
-        }
+        let urls: Vec<(usize, String)> = state
+            .frozen
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|f| f.monitors.iter().map(|m| (m.index, windows::frozen_url(f, m.index))).collect())
+            .unwrap_or_default();
+        windows::start_overlays(&app, urls);
         // 兜底：5 秒内一块框选画面都没出来，就结束这次截图，免得后面的热键一直无效
         std::thread::sleep(std::time::Duration::from_secs(5));
         let same_capture = state.frozen.lock().unwrap().as_ref().is_some_and(|f| f.taken_at == taken_at);
@@ -94,16 +104,26 @@ pub fn overlay_ready(app: &AppHandle, index: usize) {
 pub fn cancel(app: &AppHandle) {
     let state = app.state::<AppState>();
     windows::hide_overlays(app);
+    windows::hide_note(app);
     *state.frozen.lock().unwrap() = None;
     *state.pending_shot.lock().unwrap() = None;
     state.capturing.store(false, Ordering::SeqCst);
+    restore_main_if_needed(app);
+}
+
+/// 从主窗口点"截一张"的，截完或取消后把主窗口叫回来
+fn restore_main_if_needed(app: &AppHandle) {
+    if app.state::<AppState>().restore_main.swap(false, Ordering::SeqCst) {
+        windows::show_main(app);
+    }
 }
 
 /// 框选完成：从原图裁剪，PNG 存档，准备好缩略图和发给 AI 的图
 pub fn finish_selection(app: &AppHandle, index: usize, rect: PhysRect) -> Result<(), String> {
     let state = app.state::<AppState>();
     let frozen = state.frozen.lock().unwrap().take().ok_or("截图已失效")?;
-    windows::hide_overlays(app);
+    // 截图那块屏的框选窗口留着当补充框的变暗背景，其他屏的收起
+    windows::keep_backdrop(app, index);
     let img = capture::crop(&frozen, index, rect).ok_or("选区不在屏幕内")?;
     let local = frozen.taken_at;
     let id = capture::shot_id(local.naive_local());
@@ -148,6 +168,7 @@ pub fn commit_pending(app: &AppHandle, note: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     let shot = state.pending_shot.lock().unwrap().take().ok_or("没有待记录的截图")?;
     windows::hide_note(app);
+    windows::hide_overlays(app);
     state.capturing.store(false, Ordering::SeqCst);
     let item = Item {
         id: shot.id.clone(),
@@ -168,7 +189,10 @@ pub fn commit_pending(app: &AppHandle, note: &str) -> Result<(), String> {
         day.items.push(item);
         day.items_changed_at = Some(now_iso());
         let index = day.items.len();
-        state.store.save_data(&data).map_err(|e| format!("保存失败：{e}"))?;
+        // 存盘失败（比如被杀毒软件锁住）也照常排队识别，识别完会再存一次
+        if let Err(e) = state.store.save_data(&data) {
+            log::error!("保存失败：{e}");
+        }
         index
     };
     let _ = app.emit("items-changed", &shot.date);
@@ -187,5 +211,6 @@ pub fn commit_pending(app: &AppHandle, note: &str) -> Result<(), String> {
         },
     );
     recognize::enqueue(app, Job { date: shot.date, id: shot.id });
+    restore_main_if_needed(app);
     Ok(())
 }
