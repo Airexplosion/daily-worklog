@@ -3,9 +3,11 @@
 use crate::capture::Frozen;
 use crate::holidays::Calendar;
 use crate::model::{Data, Settings};
+use crate::recognize::Job;
 use crate::storage::Store;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// 已经截好、等补充说明的那张图
 pub struct PendingShot {
@@ -16,10 +18,10 @@ pub struct PendingShot {
     /// 相对数据目录的路径，如 shots/20261015-183012-a1b2.png
     pub shot_rel: String,
     pub monitor_index: usize,
+    /// 截图那块屏的 (x, y, 宽, 高, 缩放)，补充框放在这块屏上
+    pub monitor: (i32, i32, u32, u32, f64),
     /// 补充框里显示的缩略图（JPEG）
     pub thumb_jpeg: Vec<u8>,
-    /// 发给 AI 的图（JPEG，长边 ≤1600）
-    pub ai_jpeg: Vec<u8>,
 }
 
 pub struct AppState {
@@ -35,6 +37,8 @@ pub struct AppState {
     /// 本次截图至少有一块框选画面已经显示
     pub overlay_shown: AtomicBool,
     pub pending_shot: Mutex<Option<PendingShot>>,
+    /// 识别队列
+    pub queue: Mutex<Option<UnboundedSender<Job>>>,
 }
 
 impl AppState {
@@ -49,6 +53,7 @@ impl AppState {
             capturing: AtomicBool::new(false),
             overlay_shown: AtomicBool::new(false),
             pending_shot: Mutex::new(None),
+            queue: Mutex::new(None),
         }
     }
 }

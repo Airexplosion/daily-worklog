@@ -8,8 +8,11 @@ use std::path::{Path, PathBuf};
 
 const MAX_BACKUPS: usize = 7;
 
-/// `%APPDATA%\DailyWorkLog`
+/// `%APPDATA%\DailyWorkLog`；设置了环境变量 DWL_DATA_DIR 时用它（测试用）
 pub fn data_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DWL_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
     let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     base.join("DailyWorkLog")
 }

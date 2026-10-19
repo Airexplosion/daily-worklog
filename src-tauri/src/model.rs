@@ -5,6 +5,11 @@ use std::collections::BTreeMap;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// 当前本地时间，RFC3339（带时区，精确到秒）
+pub fn now_iso() -> String {
+    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
@@ -38,6 +43,9 @@ pub struct Item {
     #[serde(default)]
     pub shots: Vec<String>,
     pub status: ItemStatus,
+    /// 待处理的原因（没联网、没配接口、AI 报错），给用户看
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -232,6 +240,7 @@ mod tests {
             confidence: Some(0.9),
             shots: vec!["shots/20261015-183012-a1b2.png".into()],
             status: ItemStatus::Done,
+            error: None,
         };
         let json = serde_json::to_string(&item).unwrap();
         assert!(json.contains("\"createdAt\""));

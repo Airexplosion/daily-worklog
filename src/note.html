@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>这一条在干啥？</title>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <style>
+    html, body { background: transparent; height: 100%; overflow: hidden; user-select: none; }
+    .card {
+      position: absolute; inset: 14px; background: var(--bg-content); border-radius: var(--radius-surface);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, .26), 0 0 0 1px rgba(0, 0, 0, .1);
+      padding: 14px 16px 12px; display: flex; flex-direction: column;
+    }
+    .row { display: flex; gap: 14px; flex: 1; min-height: 0; }
+    .thumb {
+      width: 128px; height: 82px; border-radius: var(--radius-control); flex-shrink: 0;
+      background: var(--bg-card) center / contain no-repeat; border: 1px solid #e0e0e0;
+    }
+    .main { flex: 1; min-width: 0; }
+    .q { font-weight: 600; font-size: 14px; margin-bottom: 7px; display: flex; justify-content: space-between; }
+    .q span { font-weight: 400; color: var(--text-3); font-size: 12px; }
+    .guide {
+      display: inline-block; margin-top: 7px; font-size: 12px; color: var(--warn-text);
+      background: var(--warn-bg); border-radius: var(--radius-control); padding: 3px 9px;
+    }
+    .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+    .foot .later { font-size: 12px; color: var(--text-disabled); }
+    .foot .btns { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <div class="thumb" id="thumb"></div>
+      <div class="main">
+        <div class="q">这一条在干啥？<span id="idx"></span></div>
+        <input class="input" id="text" maxlength="200" autocomplete="off" spellcheck="false"
+               placeholder="一句话说清这是在干啥（可直接语音输入）">
+        <div class="guide">截图里没有的信息（人名、地点、原因）请补在这里</div>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="later">Win+H 可语音输入</span>
+      <span class="btns">
+        <button class="btn" id="skip">跳过 <kbd>Esc</kbd></button>
+        <button class="btn accent" id="ok">记录 <kbd>Enter</kbd></button>
+      </span>
+    </div>
+  </div>
+  <script src="js/note.js"></script>
+</body>
+</html>

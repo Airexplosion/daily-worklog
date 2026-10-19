@@ -5,6 +5,7 @@ pub mod flow;
 pub mod format;
 pub mod holidays;
 pub mod model;
+pub mod recognize;
 pub mod reminder;
 pub mod state;
 pub mod storage;
@@ -69,10 +70,27 @@ pub fn run() {
             });
         })
         .setup(move |app| {
-            let loaded = store.load_data();
+            let mut loaded = store.load_data();
+            // 上次退出时还在识别的条目，改成待处理，等用户手动重试
+            let mut interrupted = false;
+            for item in loaded.data.days.values_mut().flat_map(|d| d.items.iter_mut()) {
+                if item.status == model::ItemStatus::Recognizing {
+                    item.status = model::ItemStatus::Pending;
+                    item.error = Some("上次没识别完".into());
+                    interrupted = true;
+                }
+            }
+            if interrupted {
+                let _ = store.save_data(&loaded.data);
+            }
             let settings = store.load_settings();
             let hotkey = settings.hotkey.clone();
             app.manage(AppState::new(store.clone(), loaded.data, settings));
+            let worker = recognize::spawn_worker(app.handle().clone());
+            *app.state::<AppState>().queue.lock().unwrap() = Some(worker);
+            if let Err(e) = windows::create_aux_windows(app.handle()) {
+                log::error!("创建补充框/提示窗失败：{e}");
+            }
             if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
                 log::error!("热键 {hotkey} 注册失败：{e}");
             }
@@ -87,6 +105,11 @@ pub fn run() {
             commands::overlay_ready,
             commands::capture_done,
             commands::capture_cancel,
+            commands::note_current,
+            commands::note_submit,
+            commands::note_skip,
+            commands::toast_hide,
+            commands::toast_open_item,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
