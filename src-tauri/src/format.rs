@@ -158,6 +158,21 @@ pub fn check(lines: &[String], sources: &[String], banned: &[String]) -> Vec<Che
     out
 }
 
+/// 复制前只做两件事：删 `#` `*` 反引号和行首项目符号；换行统一 `\r\n`。不重编号、不删行
+pub fn for_clipboard(text: &str) -> String {
+    text.split('\n')
+        .map(|l| {
+            let l = l.trim_end_matches('\r');
+            if l.trim().is_empty() {
+                String::new()
+            } else {
+                clean_line(l)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
 /// 识图单条：一行、去编号、去 Markdown、去引号、去末尾句号
 pub fn clean_item(raw: &str) -> String {
     let text = strip_think(raw);
@@ -260,6 +275,13 @@ mod tests {
         let sources = s(&["拼多多收入确认填写", "沟通王老师21楼直播间锁坏了"]);
         let lines = s(&["拼多多收入确认填写", "沟通王老师关于21楼直播间锁坏了的事儿"]);
         assert!(check(&lines, &sources, &s(&["完成"])).is_empty());
+    }
+
+    #[test]
+    fn for_clipboard_symbols_only() {
+        assert_eq!(for_clipboard("T\n1.a\n- 多写的 **b**"), "T\r\n1.a\r\n多写的 b");
+        assert_eq!(for_clipboard("T\r\n1.a\r\n\r\n2.团播头像/背景头图"), "T\r\n1.a\r\n\r\n2.团播头像/背景头图");
+        assert_eq!(for_clipboard("# 标题\n1.`x`"), "标题\r\n1.x");
     }
 
     #[test]

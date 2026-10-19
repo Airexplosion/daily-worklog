@@ -269,3 +269,73 @@ pub fn capture_from_main(app: AppHandle) {
         flow::start_capture(app);
     });
 }
+
+// ───────────── 生成总结 ─────────────
+
+use crate::summary::{self, SummaryResult};
+use tauri::ipc::Channel;
+use tauri_plugin_clipboard_manager::ClipboardExt;
+
+/// 流式生成：先推标题，再推模型输出的片段；完成后返回清洗过的全文和检查结果
+#[tauri::command]
+pub async fn generate_summary(app: AppHandle, date: String, on_delta: Channel<String>) -> Result<SummaryResult, String> {
+    let state = app.state::<AppState>();
+    let d = views::parse_date(&date).ok_or("日期格式不对")?;
+    let settings = state.settings.lock().unwrap().clone();
+    let day = state.data.lock().unwrap().days.get(&date).cloned().unwrap_or_default();
+    let (sources, skipped) = summary::sources(&day);
+    let title = crate::format::title(settings.user_name.trim(), &settings.title_suffix, d);
+    let _ = on_delta.send(format!("{title}\n"));
+    let raw = if sources.is_empty() {
+        String::new()
+    } else {
+        let cfg = settings.summary_config();
+        let messages = summary::build_messages(&settings, &sources);
+        crate::ai::client::chat_stream(&cfg, messages, std::time::Duration::from_secs(60), |delta| {
+            let _ = on_delta.send(delta.to_string());
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    let result = summary::finalize(&raw, &settings, d, &sources, skipped);
+    {
+        let mut data = state.data.lock().unwrap();
+        let entry = data.days.entry(date.clone()).or_default();
+        summary::set_generated(entry, &result.text, &now_iso());
+        save(&state, &data)?;
+    }
+    log::info!("总结已生成：{date}，{} 条", sources.len());
+    let _ = app.emit("summary-generated", &date);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn save_summary(app: AppHandle, date: String, text: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut data = state.data.lock().unwrap();
+    let day = data.days.get_mut(&date).ok_or("这天还没有总结")?;
+    summary::save_edit(day, &text, &now_iso());
+    save(&state, &data)
+}
+
+/// 撤销重新生成，返回恢复后的文字
+#[tauri::command]
+pub fn undo_regenerate(app: AppHandle, date: String) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let mut data = state.data.lock().unwrap();
+    let day = data.days.get_mut(&date).ok_or("这天还没有总结")?;
+    if !summary::undo_regenerate(day) {
+        return Err("没有可以撤销的".into());
+    }
+    let text = day.summary.as_ref().map(|s| s.text.clone()).unwrap_or_default();
+    save(&state, &data)?;
+    Ok(text)
+}
+
+/// 复制纯文本：只去掉 Markdown 符号，换行统一 \r\n
+#[tauri::command]
+pub fn copy_text(app: AppHandle, text: String) -> Result<String, String> {
+    let clean = crate::format::for_clipboard(&text);
+    app.clipboard().write_text(clean.clone()).map_err(|e| format!("复制失败：{e}"))?;
+    Ok(clean)
+}
