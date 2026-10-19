@@ -3,6 +3,7 @@ pub mod storage;
 pub mod format;
 pub mod ai;
 pub mod tags;
+pub mod holidays;
 
 pub fn run() {
     tauri::Builder::default()
