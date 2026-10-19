@@ -1,5 +1,6 @@
 /* 通用控件，配合 tokens.css 使用 */
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; font-family: var(--font); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
 

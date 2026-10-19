@@ -108,6 +108,9 @@ pub struct TagDef {
     pub created_by: TagOrigin,
     #[serde(default)]
     pub created_at: String,
+    /// AI 新建、用户还没处理（保留/改名/并入）的，界面上显示"新 · xxx"
+    #[serde(default)]
+    pub pending: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

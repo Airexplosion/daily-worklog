@@ -122,6 +122,13 @@ pub fn delete(data: &mut Data, settings: &mut Settings, name: &str) {
     }
 }
 
+/// "保留"：AI 新建的标签转为正式标签
+pub fn confirm(settings: &mut Settings, name: &str) {
+    for t in settings.tags.iter_mut().filter(|t| t.name == name) {
+        t.pending = false;
+    }
+}
+
 pub fn usage(data: &Data) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for t in data.days.values().flat_map(|d| d.items.iter()).flat_map(|i| i.tags.iter()) {
@@ -136,7 +143,7 @@ mod tests {
     use crate::model::{Data, Day, Item, ItemStatus, Settings, Source, TagDef, TagOrigin};
 
     fn def(name: &str) -> TagDef {
-        TagDef { name: name.into(), created_by: TagOrigin::User, created_at: String::new() }
+        TagDef { name: name.into(), created_by: TagOrigin::User, created_at: String::new(), pending: false }
     }
 
     fn item(id: &str, tags: &[&str]) -> Item {
@@ -231,6 +238,14 @@ mod tests {
         let items = &data.days["2026-10-15"].items;
         assert_eq!(items[0].tags, s(&["其他"]));
         assert_eq!(items[1].tags, s(&["百应"]));
+    }
+
+    #[test]
+    fn confirm_clears_pending() {
+        let mut st = Settings::default();
+        st.tags = vec![TagDef { name: "会议".into(), created_by: TagOrigin::Ai, created_at: String::new(), pending: true }];
+        confirm(&mut st, "会议");
+        assert!(!st.tags[0].pending);
     }
 
     #[test]

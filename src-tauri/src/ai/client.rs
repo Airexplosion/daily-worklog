@@ -28,7 +28,7 @@ impl fmt::Display for AiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AiError::NoKey => write!(f, "还没填接口信息（接口地址、API Key、模型）"),
-            AiError::Network(e) => write!(f, "连不上 AI 服务：{e}"),
+            AiError::Network(_) => write!(f, "连不上 AI 服务，检查一下网络或接口地址"),
             AiError::Timeout => write!(f, "AI 服务响应超时"),
             AiError::Http(code, msg) => write!(f, "AI 服务返回错误 {code}：{msg}"),
             AiError::BadResponse(e) => write!(f, "AI 返回的内容看不懂：{e}"),
@@ -76,6 +76,7 @@ fn check_config(cfg: &ModelConfig) -> Result<(), AiError> {
 }
 
 fn map_err(e: reqwest::Error) -> AiError {
+    log::warn!("AI 请求出错：{e}");
     if e.is_timeout() {
         AiError::Timeout
     } else {

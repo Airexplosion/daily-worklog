@@ -143,7 +143,7 @@ fn apply_result(app: &AppHandle, job: &Job, raw: &str) {
         let ai_tags = tags::apply_ai(&settings.tags, &returned_tags, settings.allow_ai_new_tags);
         if !ai_tags.created.is_empty() {
             for name in &ai_tags.created {
-                settings.tags.push(TagDef { name: name.clone(), created_by: TagOrigin::Ai, created_at: now_iso() });
+                settings.tags.push(TagDef { name: name.clone(), created_by: TagOrigin::Ai, created_at: now_iso(), pending: true });
             }
             if let Err(e) = state.store.save_settings(&settings) {
                 log::error!("保存设置失败：{e}");

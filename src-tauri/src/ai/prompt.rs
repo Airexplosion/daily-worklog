@@ -141,7 +141,7 @@ mod tests {
     fn vision_prompt_disallow_new_tags() {
         let mut s = settings();
         s.allow_ai_new_tags = false;
-        s.tags = vec![TagDef { name: "百应".into(), created_by: TagOrigin::User, created_at: String::new() }];
+        s.tags = vec![TagDef { name: "百应".into(), created_by: TagOrigin::User, created_at: String::new(), pending: false }];
         let p = vision_prompt(&s, true);
         assert!(p.contains("都不合适就用\"其他\""));
         assert!(p.contains("优先从现有标签里选：百应"));
