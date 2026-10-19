@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>截图</title>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: rgba(0, 0, 0, 0.004); cursor: crosshair; user-select: none; font-family: var(--font); }
+    #bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; pointer-events: none; visibility: hidden; }
+    #bg.ready { visibility: visible; }
+    #dim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); }
+    #sel { position: fixed; display: none; border: 1.5px solid #4ca0ff; box-shadow: 0 0 0 99999px rgba(0, 0, 0, 0.45); box-sizing: border-box; }
+    .h { position: absolute; width: 7px; height: 7px; background: #fff; border: 1.5px solid #4ca0ff; box-sizing: border-box; }
+    #size { position: fixed; display: none; background: rgba(20, 20, 20, 0.88); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #hint { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); background: rgba(32, 32, 32, 0.88); color: #fff; font-size: 13px; padding: 7px 14px; border-radius: 6px; white-space: nowrap; pointer-events: none; }
+    #hint b { font-weight: 500; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px; padding: 0 5px; margin: 0 3px; font-size: 12px; }
+    .cross { position: fixed; background: rgba(76, 160, 255, 0.55); pointer-events: none; }
+    #cx { left: 0; right: 0; height: 1px; }
+    #cy { top: 0; bottom: 0; width: 1px; }
+    body.selecting #dim { display: none; }
+  </style>
+</head>
+<body>
+  <img id="bg" alt="" draggable="false">
+  <div id="dim"></div>
+  <div class="cross" id="cx"></div>
+  <div class="cross" id="cy"></div>
+  <div id="sel">
+    <span class="h" style="left:-4px;top:-4px"></span><span class="h" style="right:-4px;top:-4px"></span>
+    <span class="h" style="left:-4px;bottom:-4px"></span><span class="h" style="right:-4px;bottom:-4px"></span>
+  </div>
+  <div id="size"></div>
+  <div id="hint">拖动鼠标框选　<b>Esc</b> 取消　<b>右键</b> 重选</div>
+  <script src="js/capture.js"></script>
+</body>
+</html>

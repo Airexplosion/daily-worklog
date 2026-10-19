@@ -1,0 +1,54 @@
+//! 全局状态。
+
+use crate::capture::Frozen;
+use crate::holidays::Calendar;
+use crate::model::{Data, Settings};
+use crate::storage::Store;
+use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
+
+/// 已经截好、等补充说明的那张图
+pub struct PendingShot {
+    pub id: String,
+    /// YYYY-MM-DD，按按下热键的时刻算
+    pub date: String,
+    pub created_at: String,
+    /// 相对数据目录的路径，如 shots/20261015-183012-a1b2.png
+    pub shot_rel: String,
+    pub monitor_index: usize,
+    /// 补充框里显示的缩略图（JPEG）
+    pub thumb_jpeg: Vec<u8>,
+    /// 发给 AI 的图（JPEG，长边 ≤1600）
+    pub ai_jpeg: Vec<u8>,
+}
+
+pub struct AppState {
+    pub store: Store,
+    pub data: Mutex<Data>,
+    pub settings: Mutex<Settings>,
+    pub calendar: Calendar,
+    pub frozen: Mutex<Option<Frozen>>,
+    /// 框选窗口对应的显示器几何（x, y, w, h），显示器变了就重建窗口
+    pub overlay_geometry: Mutex<Vec<(i32, i32, u32, u32)>>,
+    /// 截图流程进行中（框选或补充框），再按热键无效
+    pub capturing: AtomicBool,
+    /// 本次截图至少有一块框选画面已经显示
+    pub overlay_shown: AtomicBool,
+    pub pending_shot: Mutex<Option<PendingShot>>,
+}
+
+impl AppState {
+    pub fn new(store: Store, data: Data, settings: Settings) -> AppState {
+        AppState {
+            store,
+            data: Mutex::new(data),
+            settings: Mutex::new(settings),
+            calendar: Calendar::bundled(),
+            frozen: Mutex::new(None),
+            overlay_geometry: Mutex::new(Vec::new()),
+            capturing: AtomicBool::new(false),
+            overlay_shown: AtomicBool::new(false),
+            pending_shot: Mutex::new(None),
+        }
+    }
+}
