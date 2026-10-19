@@ -174,7 +174,7 @@ pub async fn suggest_tags(app: AppHandle, samples: String) -> Result<Vec<String>
     }
     let cfg = app.state::<AppState>().settings.lock().unwrap().summary_config();
     let messages = json!([
-        { "role": "system", "content": "你帮用户整理工作分类。根据用户以前写的工作总结，归纳出 3-8 个工作分类标签，每个 2-6 个字，用项目名或业务名（比如：项目甲、项目丙、会议室）。只输出 JSON 字符串数组，不要别的文字。" },
+        { "role": "system", "content": "你帮用户整理工作分类。根据用户以前写的工作总结，归纳出 3-8 个工作分类标签，每个 2-6 个字，用项目名或业务名。只输出 JSON 字符串数组，不要别的文字。" },
         { "role": "user", "content": samples }
     ]);
     let raw = crate::ai::client::chat(&cfg, messages, Duration::from_secs(30)).await.map_err(|e| e.to_string())?;

@@ -181,7 +181,7 @@ docs/首次安装说明.md
 
 **Interfaces:**
 - Produces 命令：`get_day(date: String) -> Day`、`today() -> String`、`add_item(date, text) -> Item`、`update_item(id, text: Option<String>, tags: Option<Vec<String>>)`、`delete_item(id)`（软删除，返回 token）、`undo_delete(token)`、`retry_item(id)`、`retry_all(date)`、`get_shot(id) -> String(data url)`、`get_tags() -> Vec<TagDef>`、`mute_today()`。
-- UI：按 Spec 7.7 与界面稿 B；双击编辑、失焦保存；Toast"已删除 · 撤销"5 秒；标签点选弹层（勾选/新建）；AI 新建标签虚线"新 · xxx"及保留/改名/并入；待处理黄底 + 重试/手动写；识别中骨架动画；右下"截一张"悬浮钮；空状态；顶部日期行 `10月15日 周四` + `今日已记录 N 条 · 18:00 提醒`。
+- UI：按 Spec 7.7 与第 8 节；双击编辑、失焦保存；Toast"已删除 · 撤销"5 秒；标签点选弹层（勾选/新建）；AI 新建标签虚线"新 · xxx"及保留/改名/并入；待处理黄底 + 重试/手动写；识别中骨架动画；右下"截一张"悬浮钮；空状态；顶部日期行 `10月15日 周四` + `今日已记录 N 条 · 18:00 提醒`。
 - [ ] Step 1: 测试 `delete_then_undo_restores_position`、`delete_finalizes_after_window_removes_shot`（逻辑放在 Rust，时间注入）。
 - [ ] Step 2–4。 - [ ] Step 5: 手测界面。 - [ ] Step 6: Commit。
 
@@ -205,7 +205,7 @@ docs/首次安装说明.md
 
 **Files:** Create `src/js/history.js`; Modify `commands.rs`
 
-- 命令 `list_days() -> Vec<{date, count, generated: bool}>`（倒序）。界面按 Spec 7.10 与界面稿 ②。复用 today 的条目组件与 summary 组件（参数化日期）。
+- 命令 `list_days() -> Vec<{date, count, generated: bool}>`（倒序）。界面按 Spec 7.10。复用 today 的条目组件与 summary 组件（参数化日期）。
 - [ ] Step 1: 测试 `list_days_sorted_desc_with_flags`。 - [ ] Step 2–4。 - [ ] Step 5: Commit。
 
 ### Task 13: 设置页 + 首次引导 + 测试连接 + 让 AI 识别分类
@@ -214,7 +214,7 @@ docs/首次安装说明.md
 
 **Interfaces:**
 - Produces：`presets::all() -> Vec<Preset{id, name, base_url, vision_model, summary_model, help_url, can_vision}>`（Spec 7.4 表）；命令 `get_settings() -> SettingsView`（apiKey 掩码 `sk-****abcd`）、`save_settings(patch: Value)`、`reveal_api_key()`、`test_connection() -> {vision: Result<ms>, summary: Result<ms>}`（识图发 16×16 PNG）、`suggest_tags(samples: String) -> Vec<String>`、`set_hotkey(accel) -> Result<(), String>`（先注销旧的，失败回滚）、`finish_onboarding()`、`open_data_dir()`、`tag_usage()`、`rename_tag`、`delete_tag`、`get_default_prompts()`。
-- 引导 4 步按 Spec 7.11 与界面稿；未完成引导时启动只开引导窗口。
+- 引导 4 步按 Spec 7.11；未完成引导时启动只开引导窗口。
 - [ ] Step 1: 测试 `mask_key`（"sk-abcdef1234" → "sk-****1234"；短于 8 位全掩）、`presets_have_deepseek_no_vision`、`suggest_tags_parse`（解析模型返回的 JSON 数组或顿号分隔文本，3–8 个、归一化）。
 - [ ] Step 2–4。 - [ ] Step 5: 手测验收 15、16。 - [ ] Step 6: Commit。
 

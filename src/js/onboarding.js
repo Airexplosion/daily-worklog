@@ -62,11 +62,11 @@ async function go(i) {
 function stepWho() {
   const s = view.settings;
   const preview = h('div', { class: 'preview' });
-  const name = field(s.userName, () => {}, { maxlength: 10, placeholder: '比如：某某' });
+  const name = field(s.userName, () => {}, { maxlength: 10, placeholder: '你的名字' });
   const suffix = field(s.titleSuffix, () => {}, { maxlength: 10 });
   const update = () => {
     const d = new Date();
-    preview.textContent = `${name.value.trim() || '你的名字'}${d.getMonth() + 1}.${d.getDate()}${suffix.value.trim() || '工作梳理'}\n1.项目甲周报整理提交\n2.项目丙ppt修改`;
+    preview.textContent = `${name.value.trim() || '你的名字'}${d.getMonth() + 1}.${d.getDate()}${suffix.value.trim() || '工作梳理'}\n1.（第一件事）\n2.（第二件事）`;
     next.toggleAttribute('disabled', !name.value.trim());
   };
   page.append(
@@ -158,7 +158,7 @@ function stepAi() {
 
 function stepStyle() {
   const s = view.settings;
-  const examples = /** @type {HTMLTextAreaElement} */ (h('textarea', { class: 'input area', rows: 5, placeholder: '某某10.14工作梳理\n1.项目甲周报整理提交\n2.项目丁封面图更换' }));
+  const examples = /** @type {HTMLTextAreaElement} */ (h('textarea', { class: 'input area', rows: 5, placeholder: '把以前写过的几份工作梳理贴在这里' }));
   examples.value = s.styleExamples;
   const status = h('span', { class: 'muted' });
   const hasKey = !!s.vision.apiKey;

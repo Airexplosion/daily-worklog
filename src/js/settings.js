@@ -36,7 +36,7 @@ export function mountSettings(host) {
     const preview = h('div', { class: 'preview' });
     const updatePreview = () => {
       const d = new Date();
-      preview.textContent = `${nameInput.value || '你的名字'}${d.getMonth() + 1}.${d.getDate()}${suffixInput.value}\n1.项目甲周报整理提交\n2.项目丙ppt修改`;
+      preview.textContent = `${nameInput.value || '你的名字'}${d.getMonth() + 1}.${d.getDate()}${suffixInput.value}\n1.（第一件事）\n2.（第二件事）`;
     };
     const nameInput = field(s.userName, (v) => save({ userName: v.trim() }), { maxlength: 10 });
     const suffixInput = field(s.titleSuffix, (v) => save({ titleSuffix: v.trim() || '工作梳理' }), { maxlength: 10 });
