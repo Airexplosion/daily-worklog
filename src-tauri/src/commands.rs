@@ -50,9 +50,9 @@ pub fn toast_hide(app: AppHandle) {
     windows::hide_toast(&app);
 }
 
-/// 提示窗上的"改一下"：打开主窗口，让这条进入编辑
+/// 提示窗上的"改一下"：打开主窗口，让这条进入编辑。可能新建窗口，所以是 async
 #[tauri::command]
-pub fn toast_open_item(app: AppHandle, id: String) {
+pub async fn toast_open_item(app: AppHandle, id: String) {
     windows::hide_toast(&app);
     if windows::show_main(&app).is_some() {
         let _ = app.emit_to("main", "main:edit-item", id);

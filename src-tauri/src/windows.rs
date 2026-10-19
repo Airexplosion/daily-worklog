@@ -195,8 +195,30 @@ pub fn hide_toast(app: &AppHandle) {
     }
 }
 
-/// 打开主窗口（没有就建一个）并放到前台
+/// 首次启动引导窗口
+pub fn show_onboarding(app: &AppHandle) -> Option<WebviewWindow> {
+    let w = match app.get_webview_window("onboarding") {
+        Some(w) => w,
+        None => WebviewWindowBuilder::new(app, "onboarding", WebviewUrl::App("onboarding.html".into()))
+            .title("欢迎使用每日工作梳理")
+            .inner_size(780.0, 580.0)
+            .resizable(false)
+            .maximizable(false)
+            .theme(Some(tauri::Theme::Light))
+            .center()
+            .build()
+            .ok()?,
+    };
+    let _ = w.show();
+    let _ = w.set_focus();
+    Some(w)
+}
+
+/// 打开主窗口（没有就建一个）并放到前台；还没走完引导时打开引导
 pub fn show_main(app: &AppHandle) -> Option<WebviewWindow> {
+    if !app.state::<AppState>().settings.lock().unwrap().onboarding_done {
+        return show_onboarding(app);
+    }
     let w = match app.get_webview_window("main") {
         Some(w) => w,
         None => WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

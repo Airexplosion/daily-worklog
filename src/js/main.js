@@ -6,6 +6,7 @@ import { icons } from './icons.js';
 import { mountToday } from './today.js';
 import { mountSummary } from './summary.js';
 import { mountHistory } from './history.js';
+import { mountSettings } from './settings.js';
 import { h } from './ui.js';
 
 const content = /** @type {HTMLElement} */ (document.getElementById('content'));
@@ -16,14 +17,8 @@ const banners = h('div', { class: 'banners' });
 const pages = {
   today: { label: '今日', icon: icons.today, mount: (host) => mountToday(host, { banners }) },
   history: { label: '历史', icon: icons.history, mount: (host) => mountHistory(host) },
-  settings: { label: '设置', icon: icons.settings, mount: (host) => placeholder(host, '设置') },
+  settings: { label: '设置', icon: icons.settings, mount: (host) => mountSettings(host) },
 };
-
-/** @param {HTMLElement} host @param {string} name */
-function placeholder(host, name) {
-  host.append(h('header', { class: 'page-hd' }, h('div', { class: 'title' }, name)));
-  return { refresh() {} };
-}
 
 let currentKey = '';
 /** @type {any} */

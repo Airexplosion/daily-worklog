@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod capture;
 pub mod commands;
+pub mod config;
 pub mod flow;
 pub mod format;
 pub mod holidays;
@@ -8,6 +9,7 @@ pub mod items;
 pub mod model;
 pub mod recognize;
 pub mod reminder;
+pub mod settings_cmds;
 pub mod state;
 pub mod storage;
 pub mod summary;
@@ -149,7 +151,9 @@ pub fn run() {
                 log::error!("托盘图标创建失败：{e}");
             }
             system::spawn_reminder_loop(app.handle().clone());
-            system::sync_autostart(app.handle());
+            if app.state::<AppState>().settings.lock().unwrap().onboarding_done {
+                system::sync_autostart(app.handle());
+            }
             if let Err(e) = windows::ensure_overlays_for(app.handle(), &windows::monitor_geometry()) {
                 log::error!("创建框选窗口失败：{e}");
             }
@@ -189,6 +193,18 @@ pub fn run() {
             commands::copy_text,
             commands::get_status,
             commands::list_days,
+            settings_cmds::get_settings,
+            settings_cmds::save_settings,
+            settings_cmds::reveal_api_key,
+            settings_cmds::set_hotkey,
+            settings_cmds::test_connection,
+            settings_cmds::suggest_tags,
+            settings_cmds::add_tags,
+            settings_cmds::tag_usage,
+            settings_cmds::delete_tag,
+            settings_cmds::finish_onboarding,
+            settings_cmds::open_data_dir,
+            settings_cmds::open_url,
             commands::dismiss_missed,
             commands::dismiss_recovered,
         ])

@@ -1,0 +1,94 @@
+/* 设置页与首次引导：Win11 "设置"程序的卡片行 */
+.settings { padding-bottom: 32px; }
+.set-sec { margin-bottom: 18px; }
+.set-sec h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px 2px; }
+.set-card { background: var(--bg-card); border: 1px solid var(--stroke); border-radius: var(--radius-card); }
+.set-row {
+  display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid #f0f0f0; min-height: 56px;
+}
+.set-card > .set-row:first-child, .set-card > *:first-child .set-row:first-child { border-top: 0; }
+.set-row.thin { min-height: 0; padding-top: 6px; padding-bottom: 10px; border-top: 0; gap: 10px; }
+.set-label { flex: 1; min-width: 150px; font-size: 13.5px; }
+.set-label small { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; word-break: break-all; }
+.set-ctl { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.set-ctl.col { flex-direction: column; align-items: flex-end; }
+.set-ctl .input { width: 260px; }
+.set-ctl select.input { width: 260px; }
+.set-ctl input[type="time"], .set-ctl input[type="number"] { width: 120px; }
+.set-row > .input.area, .set-ctl .input.area { width: 100%; }
+.input.area { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.6; font-size: 13px; }
+.input.area.mono { font-family: Consolas, "Microsoft YaHei UI", monospace; font-size: 12.5px; }
+.input.small { height: 26px; width: auto; font-size: 12.5px; padding: 0 6px; }
+.preview {
+  flex: 1; background: var(--bg-content); border: 1px solid var(--stroke); border-radius: var(--radius-card); padding: 10px 12px;
+  font-size: 13px; line-height: 1.7; white-space: pre;
+}
+.muted { color: var(--text-3); font-size: 12.5px; }
+.note { color: var(--warn-text); font-size: 12px; }
+
+.switch {
+  width: 40px; height: 20px; border-radius: 10px; border: 1px solid var(--stroke-input); background: var(--bg-card);
+  position: relative; padding: 0; flex-shrink: 0;
+}
+.switch::after {
+  content: ""; position: absolute; left: 4px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: #5f5f5f;
+  transition: left .12s, background .12s;
+}
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on::after { left: 23px; background: #fff; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 420px; justify-content: flex-end; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 10px; border-radius: var(--radius-control);
+  background: var(--bg-card); border: 1px solid #e0e0e0; font-size: 12.5px;
+}
+.chip-mark { font-size: 10px; color: var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 0 4px; }
+.chip-x { border: 0; background: transparent; color: var(--text-disabled); font-size: 11px; width: 18px; height: 18px; border-radius: 3px; }
+.chip-x:hover { background: rgba(0, 0, 0, .06); color: var(--text); }
+.chip-input { height: 26px; width: 92px; border: 1px dashed var(--stroke-strong); border-radius: var(--radius-control); padding: 0 8px; outline: none; font-size: 12.5px; }
+.chip-input:focus { border-style: solid; border-color: var(--accent); }
+
+.hk { display: inline-flex; align-items: center; gap: 8px; }
+.hotkey { display: inline-flex; gap: 4px; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--stroke-strong); border-radius: var(--radius-control); background: var(--bg-subtle); font-size: 12.5px; }
+.hotkey.rec { border-color: var(--accent); color: var(--accent); }
+.hk-status { font-size: 12px; }
+.hk-status.ok { color: var(--success); }
+.hk-status.warn { color: var(--warn-text); max-width: 220px; }
+
+.probe { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+.probe .ok { color: var(--success); }
+.probe .bad { color: var(--danger); max-width: 380px; text-align: right; }
+.probe .spinner { display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+.adv { border-top: 1px solid #f0f0f0; }
+.adv > summary { padding: 12px 16px; font-size: 13px; color: var(--text-2); cursor: default; list-style: none; }
+.adv > summary::before { content: "▸ "; }
+.adv[open] > summary::before { content: "▾ "; }
+.adv-note { padding: 0 16px 8px; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.prompt-ed { padding: 0 16px 12px; }
+.prompt-hd { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; margin-bottom: 4px; }
+
+.tag-rows { display: flex; flex-direction: column; }
+.tag-row { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-top: 1px solid #f0f0f0; font-size: 13px; }
+.tag-rows .tag-row:first-child { border-top: 0; }
+.tag-row .count { color: var(--text-3); font-size: 12px; }
+.tag-row .acts { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+.btn.danger:hover { color: var(--danger); }
+
+/* 首次引导 */
+body.ob .steps { width: 168px; padding: 18px 10px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.step { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: var(--radius-control); color: var(--text-2); font-size: 13.5px; position: relative; }
+.step .dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--stroke-input); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.step.done .dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.on { background: var(--bg-hover); color: var(--text); font-weight: 600; }
+.step.on::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent); }
+.step.on .dot { border-color: var(--accent); color: var(--accent); }
+.ob-page { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 22px 28px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ob-page h2 { font-size: 22px; font-weight: 600; margin: 0; }
+.ob-page .lead { color: var(--text-2); font-size: 13px; margin: 2px 0 10px; }
+.ob-page .set-row { background: var(--bg-card); border: 1px solid var(--stroke); border-radius: var(--radius-card); min-height: 52px; padding: 8px 14px; }
+.ob-page .set-row.thin { background: transparent; border: 0; padding: 0 2px 4px; }
+.ob-page .lb { font-size: 12.5px; color: var(--text-2); margin-top: 6px; }
+.ob-page .chips { justify-content: flex-start; max-width: none; }
+.ob-ft { display: flex; justify-content: space-between; align-items: center; padding: 12px 28px; border-top: 1px solid var(--stroke); background: var(--bg-window); }
+.ob-ft .btns { display: flex; gap: 8px; }
