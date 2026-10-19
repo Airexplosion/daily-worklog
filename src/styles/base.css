@@ -1,0 +1,45 @@
+/* 通用控件，配合 tokens.css 使用 */
+* { box-sizing: border-box; }
+html, body { margin: 0; font-family: var(--font); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
+button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 14px; border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-strong); background: var(--bg-subtle); color: var(--text);
+  cursor: default; white-space: nowrap; transition: background .1s;
+}
+.btn:hover { background: #f5f5f5; }
+.btn:active { background: #f0f0f0; color: var(--text-2); }
+.btn:disabled { color: var(--text-disabled); background: var(--bg-subtle); }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.accent:hover { background: var(--accent-hover); }
+.btn.accent:active { background: var(--accent-pressed); }
+.btn.accent:disabled { background: #c6c6c6; border-color: #c6c6c6; color: #fff; }
+.btn.subtle { border-color: transparent; background: transparent; }
+.btn.subtle:hover { background: rgba(0, 0, 0, .04); }
+.btn kbd { font-family: inherit; font-size: 11px; opacity: .65; }
+.btn.small { height: 26px; padding: 0 10px; font-size: 12.5px; }
+
+.input {
+  height: 34px; width: 100%; padding: 0 10px; background: var(--bg-card);
+  border: 1px solid var(--stroke); border-bottom: 1px solid var(--stroke-input);
+  border-radius: var(--radius-control); outline: none;
+}
+.input:focus { border-bottom: 2px solid var(--accent); padding-bottom: 1px; }
+.input::placeholder { color: var(--text-disabled); }
+
+.link { color: var(--accent); cursor: pointer; text-decoration: none; background: none; border: 0; padding: 0; }
+.link:hover { text-decoration: underline; }
+
+.tag {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: var(--radius-control);
+  border: 1px solid #e0e0e0; color: var(--text-3); font-size: 11.5px; white-space: nowrap; background: var(--bg-card);
+}
+.tag.new { border: 1px dashed var(--accent); color: var(--accent); background: var(--accent-softer); font-weight: 600; }
+
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid #cfe2f5; border-top-color: var(--accent);
+  animation: spin .8s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

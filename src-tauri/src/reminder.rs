@@ -57,6 +57,7 @@ mod tests {
             confidence: None,
             shots: vec![],
             status: ItemStatus::Done,
+            error: None,
         }
     }
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>每日工作梳理</title>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <style>
+    html, body { background: transparent; height: 100%; overflow: hidden; user-select: none; }
+    .card {
+      position: absolute; inset: 10px 12px 12px 10px; background: var(--bg-content);
+      border-radius: var(--radius-surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .22), 0 0 0 1px rgba(0, 0, 0, .08);
+      padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; overflow: hidden;
+      opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s;
+    }
+    body.on .card { opacity: 1; transform: none; }
+    .tt { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
+    .tt .close { margin-left: auto; color: var(--text-3); font-weight: 400; font-size: 12px; padding: 2px 4px; border-radius: 4px; }
+    .tt .close:hover { background: rgba(0, 0, 0, .05); }
+    .ok { width: 16px; height: 16px; border-radius: 50%; background: var(--success); color: #fff; font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .warn { width: 16px; height: 16px; border-radius: 50%; background: var(--warn-text); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ds { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ds.muted { color: var(--text-2); font-size: 12.5px; }
+    .low { font-size: 12px; color: var(--warn-text); }
+    .tags { display: flex; gap: 5px; align-items: center; min-height: 22px; }
+    .tags .link { margin-left: auto; font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="tt"><span id="icon"></span><span id="title"></span><span class="close" id="close">✕</span></div>
+    <div class="ds" id="line1"></div>
+    <div class="low" id="low" hidden>AI 没太看懂，建议改一下</div>
+    <div class="tags" id="tags"></div>
+  </div>
+  <script src="js/toast.js"></script>
+</body>
+</html>

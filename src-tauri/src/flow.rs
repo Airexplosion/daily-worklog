@@ -1,18 +1,28 @@
-//! 截图主流程：热键 → 定格 → 框选 → 裁剪存档。
+//! 截图主流程：热键 → 定格 → 框选 → 裁剪存档 → 补充说明 → 落盘 → 后台识别。
 
 use crate::capture::{self, PhysRect};
+use crate::model::{now_iso, Item, ItemStatus, Source};
+use crate::recognize::{self, Job};
 use crate::state::{AppState, PendingShot};
-use crate::windows;
+use crate::windows::{self, NoteOpen, ToastPayload};
+use base64::Engine;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
-/// 热键触发。截图流程进行中时再按无效
+/// 热键触发。截图流程进行中时再按无效；补充框开着时把它重新拿到前台
 pub fn start_capture(app: AppHandle) {
     let state = app.state::<AppState>();
     if state.capturing.swap(true, Ordering::SeqCst) {
+        if state.pending_shot.lock().unwrap().is_some() {
+            if let Some(w) = app.get_webview_window("note") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }
         return;
     }
+    windows::hide_toast(&app);
     std::thread::spawn(move || {
         let t0 = Instant::now();
         let state = app.state::<AppState>();
@@ -102,14 +112,80 @@ pub fn finish_selection(app: &AppHandle, index: usize, rect: PhysRect) -> Result
     crate::storage::write_atomic(&path, &capture::png_bytes(&img)).map_err(|e| format!("保存截图失败：{e}"))?;
     log::info!("capture: 屏 {index} 选区 {:?} → {}", rect, shot_rel);
     let thumb = capture::thumbnail_fit(&img, 240, 150);
+    let m = frozen.monitors.iter().find(|m| m.index == index).ok_or("选区不在屏幕内")?;
+    let monitor = (m.x, m.y, m.width, m.height, m.scale);
+    let thumb_jpeg = capture::thumb_jpeg(&thumb);
+    let date = local.format("%Y-%m-%d").to_string();
+    let next_index = state.data.lock().unwrap().days.get(&date).map_or(0, |d| d.items.len()) + 1;
+    let thumb_url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&thumb_jpeg));
     *state.pending_shot.lock().unwrap() = Some(PendingShot {
         id,
-        date: local.format("%Y-%m-%d").to_string(),
+        date,
         created_at: local.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
         shot_rel,
         monitor_index: index,
-        thumb_jpeg: capture::thumb_jpeg(&thumb),
-        ai_jpeg: capture::ai_jpeg(&img),
+        monitor,
+        thumb_jpeg,
     });
+    windows::show_note(&app, monitor, NoteOpen { thumb: thumb_url, index: next_index });
+    Ok(())
+}
+
+/// 补充框的内容（页面刚加载、错过 note:open 时用）
+pub fn note_current(app: &AppHandle) -> Option<NoteOpen> {
+    let state = app.state::<AppState>();
+    let pending = state.pending_shot.lock().unwrap();
+    let shot = pending.as_ref()?;
+    let next_index = state.data.lock().unwrap().days.get(&shot.date).map_or(0, |d| d.items.len()) + 1;
+    Some(NoteOpen {
+        thumb: format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&shot.thumb_jpeg)),
+        index: next_index,
+    })
+}
+
+/// 回车或跳过：条目立刻落盘（识别中），补充框关掉，右下角提示，后台排队识别
+pub fn commit_pending(app: &AppHandle, note: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let shot = state.pending_shot.lock().unwrap().take().ok_or("没有待记录的截图")?;
+    windows::hide_note(app);
+    state.capturing.store(false, Ordering::SeqCst);
+    let item = Item {
+        id: shot.id.clone(),
+        created_at: shot.created_at.clone(),
+        text: String::new(),
+        note: note.trim().to_string(),
+        source: Source::Ai,
+        edited: false,
+        tags: Vec::new(),
+        confidence: None,
+        shots: vec![shot.shot_rel.clone()],
+        status: ItemStatus::Recognizing,
+        error: None,
+    };
+    let index = {
+        let mut data = state.data.lock().unwrap();
+        let day = data.days.entry(shot.date.clone()).or_default();
+        day.items.push(item);
+        day.items_changed_at = Some(now_iso());
+        let index = day.items.len();
+        state.store.save_data(&data).map_err(|e| format!("保存失败：{e}"))?;
+        index
+    };
+    let _ = app.emit("items-changed", &shot.date);
+    windows::show_toast(
+        app,
+        ToastPayload {
+            kind: "recognizing".into(),
+            id: shot.id.clone(),
+            index,
+            text: String::new(),
+            tags: Vec::new(),
+            new_tags: Vec::new(),
+            note: note.trim().to_string(),
+            message: String::new(),
+            low_confidence: false,
+        },
+    );
+    recognize::enqueue(app, Job { date: shot.date, id: shot.id });
     Ok(())
 }

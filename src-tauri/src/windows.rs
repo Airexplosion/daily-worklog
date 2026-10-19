@@ -89,6 +89,131 @@ pub fn hide_overlays(app: &AppHandle) {
     }
 }
 
+/// 补充框、提示窗都是透明窗口，卡片四周留了画阴影的边距（逻辑像素）
+pub const NOTE_SIZE: (f64, f64) = (640.0, 214.0);
+pub const TOAST_SIZE: (f64, f64) = (420.0, 150.0);
+pub const MAIN_SIZE: (f64, f64) = (900.0, 640.0);
+
+/// 软件启动时建好补充框和提示窗，用的时候直接显示，省掉加载页面的时间
+pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
+    if app.get_webview_window("note").is_none() {
+        WebviewWindowBuilder::new(app, "note", WebviewUrl::App("note.html".into()))
+            .title("这一条在干啥？")
+            .inner_size(NOTE_SIZE.0, NOTE_SIZE.1)
+            .decorations(false)
+            .transparent(true)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(false)
+            .build()?;
+    }
+    if app.get_webview_window("toast").is_none() {
+        WebviewWindowBuilder::new(app, "toast", WebviewUrl::App("toast.html".into()))
+            .title("每日工作梳理")
+            .inner_size(TOAST_SIZE.0, TOAST_SIZE.1)
+            .decorations(false)
+            .transparent(true)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .focused(false)
+            // 不可获得焦点：显示时不会把用户正在打字的窗口的焦点抢走
+            .focusable(false)
+            .visible(false)
+            .build()?;
+    }
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteOpen {
+    /// 缩略图 data URL
+    pub thumb: String,
+    /// 这会是今天第几条
+    pub index: usize,
+}
+
+/// 补充框放在截图那块屏的中下部，并拿到焦点
+pub fn show_note(app: &AppHandle, monitor: (i32, i32, u32, u32, f64), payload: NoteOpen) {
+    let Some(w) = app.get_webview_window("note") else { return };
+    let (mx, my, mw, mh, scale) = monitor;
+    let pw = (NOTE_SIZE.0 * scale).round() as u32;
+    let ph = (NOTE_SIZE.1 * scale).round() as u32;
+    let x = mx + (mw as i32 - pw as i32) / 2;
+    let y = my + (mh as f64 * 0.70) as i32 - ph as i32 / 2;
+    let _ = place_physical(&w, x, y, pw, ph);
+    let _ = app.emit_to("note", "note:open", payload);
+    let _ = w.show();
+    let _ = w.set_focus();
+    log::info!("note: 显示补充框");
+}
+
+pub fn hide_note(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("note") {
+        let _ = w.hide();
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToastPayload {
+    /// recognizing | done | failed
+    pub kind: String,
+    pub id: String,
+    pub index: usize,
+    pub text: String,
+    pub tags: Vec<String>,
+    pub new_tags: Vec<String>,
+    pub note: String,
+    pub message: String,
+    pub low_confidence: bool,
+}
+
+/// 主屏右下角（避开任务栏），显示时不抢焦点
+pub fn show_toast(app: &AppHandle, payload: ToastPayload) {
+    let Some(w) = app.get_webview_window("toast") else { return };
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let scale = m.scale_factor();
+        let area = m.work_area();
+        let pw = (TOAST_SIZE.0 * scale).round() as u32;
+        let ph = (TOAST_SIZE.1 * scale).round() as u32;
+        let x = area.position.x + area.size.width as i32 - pw as i32;
+        let y = area.position.y + area.size.height as i32 - ph as i32;
+        let _ = place_physical(&w, x, y, pw, ph);
+    }
+    let _ = app.emit_to("toast", "toast:show", payload);
+    let _ = w.show();
+}
+
+pub fn hide_toast(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("toast") {
+        let _ = w.hide();
+    }
+}
+
+/// 打开主窗口（没有就建一个）并放到前台
+pub fn show_main(app: &AppHandle) -> Option<WebviewWindow> {
+    let w = match app.get_webview_window("main") {
+        Some(w) => w,
+        None => WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            .title("每日工作梳理")
+            .inner_size(MAIN_SIZE.0, MAIN_SIZE.1)
+            .min_inner_size(720.0, 520.0)
+            .center()
+            .visible(false)
+            .build()
+            .ok()?,
+    };
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
+    Some(w)
+}
+
 /// 当前鼠标位置（物理像素）
 pub fn cursor_pos() -> Option<(i32, i32)> {
     use windows_sys::Win32::Foundation::POINT;
@@ -96,17 +221,4 @@ pub fn cursor_pos() -> Option<(i32, i32)> {
     let mut p = POINT { x: 0, y: 0 };
     let ok = unsafe { GetCursorPos(&mut p) };
     (ok != 0).then_some((p.x, p.y))
-}
-
-/// 显示但不抢焦点（右下角提示窗用）
-pub fn show_no_activate(w: &WebviewWindow) {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
-    match w.hwnd() {
-        Ok(hwnd) => unsafe {
-            ShowWindow(hwnd.0 as _, SW_SHOWNOACTIVATE);
-        },
-        Err(_) => {
-            let _ = w.show();
-        }
-    }
 }
