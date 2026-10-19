@@ -1,0 +1,202 @@
+<h2>主窗口：哪种风格更顺眼？</h2>
+<p class="subtitle">三个方向都用同一份内容（你文档里 10.15 那 5 条），只换风格。点选你喜欢的，也可以说"A 的配色 + C 的列表"这种混搭。</p>
+
+<style>
+  .mk * { box-sizing: border-box; }
+  .mk { font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; color: #1f2329; text-align: left; }
+  .win { width: 100%; max-width: 860px; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.08); position: relative; }
+  .tb { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 14px; font-size: 12px; }
+  .tb .ctl { display: flex; height: 100%; }
+  .tb .ctl span { width: 44px; display: flex; align-items: center; justify-content: center; font-size: 12px; opacity: .6; }
+  .bd { display: flex; height: 470px; }
+  .nav { width: 150px; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .nav div { padding: 8px 12px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .mn { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; }
+  .hd { padding: 18px 24px 12px; }
+  .hd .d { font-size: 20px; font-weight: 600; }
+  .hd .s { font-size: 12.5px; margin-top: 2px; }
+  .ls { flex: 1; overflow: hidden; padding: 0 24px; display: flex; flex-direction: column; gap: 8px; }
+  .it { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+  .it .n { width: 18px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .it .t { flex: 1; min-width: 0; }
+  .it .tg { display: flex; gap: 4px; flex-shrink: 0; }
+  .it .tg span { font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .th { width: 34px; height: 24px; border-radius: 4px; flex-shrink: 0; background: linear-gradient(135deg,#dfe6ee,#c7d2de); position: relative; overflow: hidden; }
+  .th::after { content: ""; position: absolute; left: 4px; right: 10px; top: 6px; height: 3px; background: rgba(255,255,255,.8); border-radius: 2px; box-shadow: 0 6px 0 rgba(255,255,255,.6), 0 12px 0 rgba(255,255,255,.5); }
+  .hint { font-size: 11.5px; margin-top: 3px; }
+  .ft { padding: 14px 24px 18px; display: flex; gap: 10px; align-items: center; }
+  .btn-add { font-size: 13px; padding: 9px 14px; border-radius: 8px; background: transparent; }
+  .btn-gen { flex: 1; font-size: 14.5px; font-weight: 600; padding: 11px; border-radius: 10px; border: none; color: #fff; text-align: center; }
+  .fab { position: absolute; right: 22px; bottom: 76px; width: 52px; height: 52px; border-radius: 50%; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; gap: 1px; }
+  .shim { background: linear-gradient(90deg, #e9edf2 25%, #f5f7fa 50%, #e9edf2 75%); background-size: 200% 100%; animation: sh 1.4s infinite; border-radius: 4px; height: 12px; width: 60%; }
+  @keyframes sh { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+  .ico { width: 15px; height: 15px; display: inline-block; }
+
+  /* ===== A 清爽卡片 ===== */
+  .sa { background: #f4f6fa; }
+  .sa .tb { background: #f4f6fa; color: #5b6472; }
+  .sa .nav { background: #f4f6fa; }
+  .sa .nav div { color: #5b6472; }
+  .sa .nav .on { background: #fff; color: #2f5cf0; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .sa .mn { background: #fff; border-radius: 14px 0 0 0; box-shadow: -1px 0 0 rgba(0,0,0,.04); }
+  .sa .hd .s { color: #8a93a2; }
+  .sa .it { background: #fff; border: 1px solid #edf0f5; border-radius: 12px; padding: 11px 14px; box-shadow: 0 1px 2px rgba(20,30,60,.04); }
+  .sa .it .n { color: #b0b7c3; }
+  .sa .tg .ai { background: #eef2ff; color: #2f5cf0; }
+  .sa .tg .mu { background: #f1f3f6; color: #6b7482; }
+  .sa .tg .pj { background: #f6f7f9; color: #6b7482; }
+  .sa .it.low { border-color: #f5d76e; background: #fffbea; }
+  .sa .it.low .hint { color: #a07700; }
+  .sa .btn-add { border: 1px dashed #c8cfdb; color: #5b6472; }
+  .sa .btn-gen { background: #2f5cf0; box-shadow: 0 4px 12px rgba(47,92,240,.28); }
+  .sa .fab { background: #2f5cf0; box-shadow: 0 6px 16px rgba(47,92,240,.35); }
+
+  /* ===== B Win11 原生 ===== */
+  .sb { background: #f3f3f3; font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+  .sb .tb { background: #f3f3f3; color: #1b1b1b; }
+  .sb .nav { background: #f3f3f3; }
+  .sb .nav div { color: #1b1b1b; position: relative; border-radius: 4px; padding: 7px 12px; }
+  .sb .nav .on { background: #eaeaea; }
+  .sb .nav .on::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: #005fb8; }
+  .sb .mn { background: #f9f9f9; border-radius: 8px 0 0 0; border-left: 1px solid #e5e5e5; border-top: 1px solid #e5e5e5; }
+  .sb .hd .d { font-size: 22px; font-weight: 600; }
+  .sb .hd .s { color: #5f5f5f; }
+  .sb .ls { gap: 3px; }
+  .sb .it { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px 14px; }
+  .sb .it .n { color: #8a8a8a; }
+  .sb .tg .ai { background: #e0eefb; color: #005fb8; border-radius: 4px !important; }
+  .sb .tg .mu { background: #eeeeee; color: #555; border-radius: 4px !important; }
+  .sb .tg .pj { background: transparent; color: #707070; border: 1px solid #e0e0e0; border-radius: 4px !important; }
+  .sb .it.low { background: #fff4ce; border-color: #f7e09a; }
+  .sb .it.low .hint { color: #8a5d00; }
+  .sb .btn-add { border: 1px solid #d0d0d0; background: #fbfbfb; color: #1b1b1b; border-radius: 4px; }
+  .sb .btn-gen { background: #005fb8; border-radius: 4px; font-weight: 600; }
+  .sb .fab { background: #005fb8; border-radius: 8px; width: 48px; height: 48px; box-shadow: 0 4px 10px rgba(0,0,0,.18); }
+
+  /* ===== C 纸面清单（所见即所得） ===== */
+  .sc { background: #f6f3ec; }
+  .sc .tb { background: #f6f3ec; color: #7a7266; }
+  .sc .nav { background: #f6f3ec; }
+  .sc .nav div { color: #7a7266; }
+  .sc .nav .on { background: #ebe5d8; color: #2b2620; font-weight: 600; }
+  .sc .mn { background: #f6f3ec; }
+  .sc .hd .s { color: #9a9081; }
+  .sc .paper { margin: 0 24px; flex: 1; background: #fffdf8; border: 1px solid #e8e1d2; border-radius: 12px; padding: 16px 18px; box-shadow: 0 2px 0 #ece6d9; overflow: hidden; display: flex; flex-direction: column; }
+  .sc .ptitle { font-size: 13px; color: #9a9081; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .sc .ptitle b { color: #2b2620; font-weight: 600; font-size: 15px; }
+  .sc .ls { padding: 0; gap: 0; }
+  .sc .it { padding: 9px 4px; border-bottom: 1px dashed #e8e1d2; font-size: 14px; }
+  .sc .it:last-child { border-bottom: none; }
+  .sc .it .n { width: auto; text-align: left; color: #2b2620; }
+  .sc .it .t { color: #2b2620; }
+  .sc .it .n + .t { margin-left: -10px; }
+  .sc .tg .ai { color: #b0763a; background: transparent; padding: 0 !important; }
+  .sc .tg .mu { color: #8a8274; background: transparent; padding: 0 !important; }
+  .sc .tg .pj { color: #8a8274; background: #f1ece1; }
+  .sc .it.low { background: #fff6d6; border-radius: 6px; border-bottom-color: transparent; }
+  .sc .it.low .hint { color: #9a6b00; }
+  .sc .shim { background: linear-gradient(90deg, #efe9dc 25%, #f8f4ec 50%, #efe9dc 75%); background-size: 200% 100%; }
+  .sc .btn-add { border: 1px dashed #cfc5b2; color: #7a7266; }
+  .sc .btn-gen { background: #2f6f57; box-shadow: 0 4px 12px rgba(47,111,87,.25); }
+  .sc .fab { background: #2f6f57; box-shadow: 0 6px 16px rgba(47,111,87,.3); }
+</style>
+
+<div class="cards" style="grid-template-columns: 1fr;">
+
+  <!-- A -->
+  <div class="card" data-choice="a-clean-cards" onclick="toggleSelect(this)">
+    <div class="card-image mk" style="aspect-ratio:auto; background:transparent; padding:20px; display:block;">
+      <div class="win sa">
+        <div class="tb"><span>每日工作梳理</span><span class="ctl"><span>—</span><span>☐</span><span>✕</span></span></div>
+        <div class="bd">
+          <div class="nav">
+            <div class="on">● 今日</div><div>○ 历史</div><div>○ 设置</div>
+          </div>
+          <div class="mn">
+            <div class="hd"><div class="d">10月15日 周四</div><div class="s">今日已记录 5 条 · 18:00 提醒</div></div>
+            <div class="ls">
+              <div class="it"><span class="n">1</span><span class="t">拼多多收入确认填写</span><span class="tg"><span class="pj">拼多多</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">2</span><span class="t">合声计划县域ppt修改</span><span class="tg"><span class="pj">合声计划</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">3</span><span class="t">百应提现，计算。</span><span class="tg"><span class="pj">百应</span><span class="mu">手动</span></span></div>
+              <div class="it low"><span class="n">4</span><span class="t">继续更换团播头像/背景头图<div class="hint">⚠ AI 没太看懂，建议改一下</div></span><span class="tg"><span class="pj">团播</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">5</span><span class="t">共享直播间使用状况反馈，沟通王老师关于21楼直播间锁坏了的事儿</span><span class="tg"><span class="pj">直播间</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">6</span><span class="t"><div class="shim"></div></span><span class="tg"><span class="ai">识别中…</span></span><span class="th"></span></div>
+            </div>
+            <div class="ft"><button class="btn-add">+ 添加一条</button><button class="btn-gen">生成今日总结</button></div>
+            <div class="fab"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>截一张</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · 清爽卡片</h3>
+      <p>文档里描述的样子：浅灰底、白色圆角卡片、蓝色主按钮。每条一张卡，标签和截图缩略图在右侧。最"现代 App"的感觉。</p>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="card" data-choice="b-win11-native" onclick="toggleSelect(this)">
+    <div class="card-image mk" style="aspect-ratio:auto; background:transparent; padding:20px; display:block;">
+      <div class="win sb">
+        <div class="tb"><span>每日工作梳理</span><span class="ctl"><span>—</span><span>☐</span><span>✕</span></span></div>
+        <div class="bd">
+          <div class="nav">
+            <div class="on">今日</div><div>历史</div><div>设置</div>
+          </div>
+          <div class="mn">
+            <div class="hd"><div class="d">10月15日 周四</div><div class="s">今日已记录 5 条 · 18:00 提醒</div></div>
+            <div class="ls">
+              <div class="it"><span class="n">1</span><span class="t">拼多多收入确认填写</span><span class="tg"><span class="pj">拼多多</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">2</span><span class="t">合声计划县域ppt修改</span><span class="tg"><span class="pj">合声计划</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">3</span><span class="t">百应提现，计算。</span><span class="tg"><span class="pj">百应</span><span class="mu">手动</span></span></div>
+              <div class="it low"><span class="n">4</span><span class="t">继续更换团播头像/背景头图<div class="hint">⚠ AI 没太看懂，建议改一下</div></span><span class="tg"><span class="pj">团播</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">5</span><span class="t">共享直播间使用状况反馈，沟通王老师关于21楼直播间锁坏了的事儿</span><span class="tg"><span class="pj">直播间</span><span class="ai">AI</span></span><span class="th"></span></div>
+              <div class="it"><span class="n">6</span><span class="t"><div class="shim"></div></span><span class="tg"><span class="ai">识别中…</span></span><span class="th"></span></div>
+            </div>
+            <div class="ft"><button class="btn-add">+ 添加一条</button><button class="btn-gen">生成今日总结</button></div>
+            <div class="fab"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>截一张</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · Win11 原生风</h3>
+      <p>模仿 Windows 11"设置"程序：小圆角、细边框、Windows 默认蓝。看起来像系统自带的工具，同事装上不会觉得是"野软件"。</p>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="card" data-choice="c-paper-wysiwyg" onclick="toggleSelect(this)">
+    <div class="card-image mk" style="aspect-ratio:auto; background:transparent; padding:20px; display:block;">
+      <div class="win sc">
+        <div class="tb"><span>每日工作梳理</span><span class="ctl"><span>—</span><span>☐</span><span>✕</span></span></div>
+        <div class="bd">
+          <div class="nav">
+            <div class="on">今日</div><div>历史</div><div>设置</div>
+          </div>
+          <div class="mn">
+            <div class="hd"><div class="d">10月15日 周四</div><div class="s">今日已记录 5 条 · 18:00 提醒</div></div>
+            <div class="paper">
+              <div class="ptitle"><b>张三10.15工作梳理</b><span>成文预览</span></div>
+              <div class="ls">
+                <div class="it"><span class="n">1.</span><span class="t">拼多多收入确认填写</span><span class="tg"><span class="pj">拼多多</span><span class="ai">AI</span></span><span class="th"></span></div>
+                <div class="it"><span class="n">2.</span><span class="t">合声计划县域ppt修改</span><span class="tg"><span class="pj">合声计划</span><span class="ai">AI</span></span><span class="th"></span></div>
+                <div class="it"><span class="n">3.</span><span class="t">百应提现，计算。</span><span class="tg"><span class="pj">百应</span><span class="mu">手动</span></span></div>
+                <div class="it low"><span class="n">4.</span><span class="t">继续更换团播头像/背景头图<div class="hint">⚠ AI 没太看懂，建议改一下</div></span><span class="tg"><span class="pj">团播</span><span class="ai">AI</span></span><span class="th"></span></div>
+                <div class="it"><span class="n">5.</span><span class="t">共享直播间使用状况反馈，沟通王老师关于21楼直播间锁坏了的事儿</span><span class="tg"><span class="pj">直播间</span><span class="ai">AI</span></span><span class="th"></span></div>
+                <div class="it"><span class="n">6.</span><span class="t"><div class="shim"></div></span><span class="tg"><span class="ai">识别中…</span></span><span class="th"></span></div>
+              </div>
+            </div>
+            <div class="ft"><button class="btn-add">+ 添加一条</button><button class="btn-gen">生成今日总结</button></div>
+            <div class="fab"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>截一张</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · 纸面清单（所见即所得）</h3>
+      <p>暖白纸张底色，清单直接长成最终成文的样子：标题"张三10.15工作梳理"、"1." 编号都在。白天记的时候就能看到下班要交的东西。</p>
+    </div>
+  </div>
+
+</div>

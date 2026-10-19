@@ -1,0 +1,128 @@
+<h2>截一张的完整过程：框选 → 补一句 → 记好了</h2>
+<p class="subtitle">按下 Ctrl+Alt+S 之后依次出现这三个画面，整个过程不打开主窗口。看看文案、按钮、位置对不对。</p>
+
+<style>
+  .cf * { box-sizing: border-box; }
+  .cf { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; color: #1b1b1b; text-align: left; }
+  .cf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 22px; }
+  .cap { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px 2px; }
+  .scr { position: relative; aspect-ratio: 16/9; border-radius: 6px; overflow: hidden; background: linear-gradient(160deg, #cfdbe8, #e6edf4); box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
+  /* 假桌面上的一个表格窗口 */
+  .app { position: absolute; left: 6%; top: 7%; width: 80%; height: 78%; background: #fff; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.15); overflow: hidden; }
+  .app .t { height: 22px; background: #f3f3f3; font-size: 10px; display: flex; align-items: center; padding-left: 8px; color: #444; border-bottom: 1px solid #e5e5e5; }
+  .app .rb { height: 16px; background: #217346; }
+  .app .gd { position: absolute; top: 38px; left: 0; right: 0; bottom: 0;
+    background-image: repeating-linear-gradient(0deg, #e6e6e6 0 1px, transparent 1px 16px), repeating-linear-gradient(90deg, #e6e6e6 0 1px, transparent 1px 64px); }
+  .app .gd .cells { position: absolute; left: 6px; top: 3px; font-size: 9px; color: #333; line-height: 16px; white-space: pre; font-variant-numeric: tabular-nums; }
+  .tbar { position: absolute; left: 0; right: 0; bottom: 0; height: 7%; background: rgba(243,243,243,.92); border-top: 1px solid rgba(0,0,0,.08); }
+  /* 框选 */
+  .sel { position: absolute; left: 14%; top: 26%; width: 50%; height: 38%; border: 1.5px solid #4ca0ff; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); }
+  .sel .h { position: absolute; width: 7px; height: 7px; background: #fff; border: 1.5px solid #4ca0ff; }
+  .sz { position: absolute; left: 14%; top: calc(26% - 22px); background: rgba(20,20,20,.85); color: #fff; font-size: 10.5px; padding: 2px 7px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  .hintpill { position: absolute; left: 50%; top: 4%; transform: translateX(-50%); background: rgba(32,32,32,.88); color: #fff; font-size: 11px; padding: 5px 12px; border-radius: 6px; white-space: nowrap; }
+  .hintpill b { font-weight: 500; border: 1px solid rgba(255,255,255,.35); border-radius: 3px; padding: 0 4px; margin: 0 2px; font-size: 10px; }
+  .cross-x { position: absolute; left: 0; right: 0; top: 64%; height: 1px; background: rgba(76,160,255,.5); }
+  .cross-y { position: absolute; top: 0; bottom: 0; left: 64%; width: 1px; background: rgba(76,160,255,.5); }
+  /* 补充说明浮层 */
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,.18); }
+  .note { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); width: 74%; background: #f9f9f9; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.1); padding: 12px 14px 10px; }
+  .note .r { display: flex; gap: 12px; }
+  .thumb { width: 92px; height: 58px; border-radius: 4px; flex-shrink: 0; background: #fff; border: 1px solid #e0e0e0; position: relative; overflow: hidden;
+    background-image: repeating-linear-gradient(0deg, #e9e9e9 0 1px, transparent 1px 8px), repeating-linear-gradient(90deg, #e9e9e9 0 1px, transparent 1px 30px); }
+  .note .q { font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+  .note .in { background: #fff; border: 1px solid #e5e5e5; border-bottom: 2px solid #005fb8; border-radius: 4px; padding: 6px 9px; font-size: 12px; color: #8a8a8a; display: flex; align-items: center; }
+  .note .in .caret { width: 1px; height: 14px; background: #1b1b1b; margin-right: 2px; animation: bl 1s steps(1) infinite; }
+  @keyframes bl { 50% { opacity: 0; } }
+  .note .g { font-size: 11px; color: #9a5b00; background: #fff4ce; border-radius: 4px; padding: 3px 8px; margin-top: 6px; display: inline-block; }
+  .note .ft { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; }
+  .note .lk { font-size: 11px; color: #005fb8; }
+  .note .lk em { font-style: normal; color: #8a8a8a; }
+  .note .bs { display: flex; gap: 6px; }
+  .note .b { font-size: 11.5px; padding: 3px 10px; border-radius: 4px; border: 1px solid #d0d0d0; background: #fbfbfb; }
+  .note .b.ac { background: #005fb8; color: #fff; border-color: #005fb8; }
+  .note .b kbd { font-family: inherit; font-size: 10px; opacity: .7; margin-left: 4px; }
+  /* 记好了 toast */
+  .toast { position: absolute; right: 2.5%; width: 52%; background: #f9f9f9; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.08); padding: 9px 12px; font-size: 11.5px; }
+  .toast .tt { display: flex; align-items: center; gap: 7px; font-weight: 600; margin-bottom: 3px; }
+  .toast .ds { color: #444; }
+  .toast .tags { display: flex; gap: 4px; margin-top: 5px; align-items: center; }
+  .toast .tags span { font-size: 10px; padding: 0 6px; border-radius: 3px; border: 1px solid #e0e0e0; color: #707070; }
+  .toast .tags a { margin-left: auto; color: #005fb8; font-size: 11px; }
+  .spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid #cfe2f5; border-top-color: #005fb8; animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .okc { width: 13px; height: 13px; border-radius: 50%; background: #0f7b0f; color: #fff; font-size: 9px; display: flex; align-items: center; justify-content: center; }
+  .lbl { position: absolute; left: 2.5%; font-size: 10px; color: #5f5f5f; background: rgba(255,255,255,.8); padding: 1px 6px; border-radius: 3px; }
+</style>
+
+<div class="cf cf-grid">
+
+  <!-- 1 框选 -->
+  <div>
+    <div class="cap">① 按下热键：所有屏幕冻结，拖动框选</div>
+    <div class="scr">
+      <div class="app"><div class="t">百应 · 提现明细.xlsx</div><div class="rb"></div>
+        <div class="gd"><div class="cells">日期          账号              提现金额        状态
+10-13        本地台·生活号      3,280.00        已到账
+10-14        本地台·美食号      1,920.50        已到账
+10-15        本地台·生活号      2,460.00        审核中
+10-15        本地台·文旅号      5,110.00        审核中</div></div></div>
+      <div class="tbar"></div>
+      <div class="cross-x"></div><div class="cross-y"></div>
+      <div class="sel"><span class="h" style="left:-4px;top:-4px"></span><span class="h" style="right:-4px;top:-4px"></span><span class="h" style="left:-4px;bottom:-4px"></span><span class="h" style="right:-4px;bottom:-4px"></span></div>
+      <div class="sz">1280 × 540</div>
+      <div class="hintpill">拖动鼠标框选　<b>Esc</b> 取消　<b>右键</b> 重选</div>
+    </div>
+  </div>
+
+  <!-- 2 补一句 -->
+  <div>
+    <div class="cap">② 松开鼠标：屏幕中下方弹出补充框，光标已在输入框里</div>
+    <div class="scr">
+      <div class="app"><div class="t">百应 · 提现明细.xlsx</div><div class="rb"></div>
+        <div class="gd"><div class="cells">日期          账号              提现金额        状态
+10-13        本地台·生活号      3,280.00        已到账
+10-14        本地台·美食号      1,920.50        已到账</div></div></div>
+      <div class="tbar"></div>
+      <div class="dim"></div>
+      <div class="note">
+        <div class="r">
+          <div class="thumb"></div>
+          <div style="flex:1;min-width:0">
+            <div class="q">这一条在干啥？</div>
+            <div class="in"><span class="caret"></span>一句话说清这是在干啥（可直接语音输入）</div>
+            <div class="g">截图里没有的信息（人名、地点、原因）请补在这里</div>
+          </div>
+        </div>
+        <div class="ft">
+          <span class="lk">＋ 再截一张，合到这条 <em>（P1）</em></span>
+          <span class="bs"><span class="b">跳过<kbd>Esc</kbd></span><span class="b ac">记录<kbd>Enter</kbd></span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 记好了 -->
+  <div>
+    <div class="cap">③ 按回车：补充框立刻消失，右下角小提示，AI 在后台识别，几秒后变成结果</div>
+    <div class="scr">
+      <div class="app"><div class="t">百应 · 提现明细.xlsx</div><div class="rb"></div>
+        <div class="gd"><div class="cells">日期          账号              提现金额        状态
+10-13        本地台·生活号      3,280.00        已到账
+10-14        本地台·美食号      1,920.50        已到账
+10-15        本地台·生活号      2,460.00        审核中</div></div></div>
+      <div class="tbar"></div>
+      <span class="lbl" style="bottom:42%">刚按回车</span>
+      <div class="toast" style="bottom:36%">
+        <div class="tt"><span class="spin"></span>已记录第 6 条 · AI 识别中…</div>
+        <div class="ds">你补的话：沟通王老师21楼直播间锁坏了</div>
+      </div>
+      <span class="lbl" style="bottom:22%">约 3 秒后</span>
+      <div class="toast" style="bottom:9%">
+        <div class="tt"><span class="okc">✓</span>第 6 条已生成</div>
+        <div class="ds">沟通王老师关于21楼直播间锁坏了的事儿</div>
+        <div class="tags"><span>直播间</span><span>跨部门沟通</span><a>改一下</a></div>
+      </div>
+    </div>
+  </div>
+
+</div>

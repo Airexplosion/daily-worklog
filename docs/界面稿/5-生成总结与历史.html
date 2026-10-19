@@ -1,0 +1,139 @@
+<h2>生成总结、历史、漏掉的那天</h2>
+<p class="subtitle">① 点"生成今日总结"之后的样子；② 历史页；③ 第二天早上开机，发现昨天忘了生成。</p>
+
+<style>
+  .sh * { box-sizing: border-box; }
+  .sh { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; color: #1b1b1b; text-align: left; }
+  .sh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 22px; }
+  .cap { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px 2px; }
+  .w { background: #f3f3f3; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.08); }
+  .w .tb { height: 32px; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; font-size: 12px; }
+  .w .tb .c { display: flex; height: 100%; } .w .tb .c span { width: 42px; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: 11px; }
+  .w .bd { display: flex; height: 470px; }
+  .nv { width: 118px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .nv div { font-size: 13px; padding: 7px 12px; border-radius: 4px; position: relative; }
+  .nv .on { background: #eaeaea; font-weight: 600; }
+  .nv .on::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: #005fb8; }
+  .pg { flex: 1; background: #f9f9f9; border-left: 1px solid #e5e5e5; border-top: 1px solid #e5e5e5; border-radius: 8px 0 0 0; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .hd { padding: 16px 22px 10px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .hd .d { font-size: 20px; font-weight: 600; } .hd .s { font-size: 12px; color: #5f5f5f; }
+  .back { font-size: 12.5px; color: #005fb8; }
+  .doc { margin: 0 22px; background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 12px 14px; font-size: 13.5px; line-height: 1.85; white-space: pre; flex: 1; overflow: hidden; }
+  .doc .cur { display: inline-block; width: 7px; height: 15px; background: #005fb8; vertical-align: -2px; animation: bl 1s steps(1) infinite; }
+  @keyframes bl { 50% { opacity: 0; } }
+  .chk { margin: 8px 22px 0; font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; }
+  .chk .ok { color: #0f7b0f; } .chk .wn { color: #9a5b00; background: #fff4ce; border-radius: 4px; padding: 3px 8px; }
+  .ft { padding: 12px 22px 16px; display: flex; gap: 8px; align-items: center; }
+  .b { font-size: 13px; padding: 8px 14px; border-radius: 4px; border: 1px solid #d0d0d0; background: #fbfbfb; white-space: nowrap; }
+  .b.ac { background: #005fb8; color: #fff; border-color: #005fb8; font-weight: 600; flex: 1; text-align: center; font-size: 14px; }
+  .muted { font-size: 11.5px; color: #707070; }
+  /* 历史 */
+  .hist { display: flex; flex: 1; min-height: 0; padding: 0 22px 16px; gap: 12px; }
+  .days { width: 150px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .days .mo { font-size: 11.5px; color: #707070; padding: 4px 8px; }
+  .days div.dy { font-size: 12.5px; padding: 6px 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .days .dy.on { background: #fff; border: 1px solid #e5e5e5; font-weight: 600; }
+  .days .st { font-size: 10.5px; padding: 0 5px; border-radius: 3px; }
+  .days .st.g { color: #0f7b0f; background: #dff6dd; } .days .st.p { color: #9a5b00; background: #fff4ce; } .days .st.n { color: #8a8a8a; }
+  .det { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .det .doc2 { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px 12px; font-size: 12.5px; line-height: 1.75; white-space: pre; overflow: hidden; }
+  .det .lb { font-size: 11.5px; color: #707070; display: flex; justify-content: space-between; }
+  .det .lb a { color: #005fb8; }
+  .mini { display: flex; flex-direction: column; gap: 3px; }
+  .mini div { background: #fff; border: 1px solid #e5e5e5; border-radius: 4px; padding: 5px 9px; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+  .mini span.t { color: #707070; font-size: 10.5px; border: 1px solid #e0e0e0; border-radius: 3px; padding: 0 5px; white-space: nowrap; }
+  /* 漏掉的昨天 */
+  .ban { margin: 0 22px 10px; background: #fff4ce; border: 1px solid #f7e09a; border-radius: 6px; padding: 10px 12px; font-size: 12.5px; display: flex; align-items: center; gap: 10px; }
+  .ban .ic { width: 18px; height: 18px; border-radius: 50%; background: #9a5b00; color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ban .tx { flex: 1; } .ban .tx small { display: block; color: #6b5300; font-size: 11.5px; }
+  .ban .b { padding: 5px 12px; font-size: 12.5px; }
+  .ban .b.pri { background: #005fb8; color: #fff; border-color: #005fb8; }
+  .empty { margin: 0 22px; flex: 1; border: 1px dashed #d0d0d0; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #707070; font-size: 12.5px; gap: 6px; }
+  .empty kbd { font-family: inherit; font-size: 11px; border: 1px solid #d0d0d0; border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; background: #fbfbfb; color: #1b1b1b; }
+</style>
+
+<div class="sh sh-grid">
+
+  <!-- 1 生成结果 -->
+  <div>
+    <div class="cap">① 生成总结：打字机效果出字，出完自动做格式检查，可直接改</div>
+    <div class="w">
+      <div class="tb"><span>每日工作梳理</span><span class="c"><span>—</span><span>☐</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="nv"><div class="on">今日</div><div>历史</div><div>设置</div></div>
+        <div class="pg">
+          <div class="hd"><div><div class="d">今日总结</div><div class="s">根据 6 条记录生成 · 合并了 1 处重复 · 已自动存档</div></div><span class="back">← 回到清单</span></div>
+          <div class="doc">张三10.15工作梳理
+1.拼多多收入确认填写
+2.合声计划县域ppt修改
+3.百应提现，计算。
+4.继续更换团播头像/背景头图
+5.共享直播间使用状况反馈，沟通王老师关于21楼直播间锁坏了的事儿。<span class="cur"></span></div>
+          <div class="chk">
+            <span class="ok">✓ 编号连续　✓ 无 # * - 符号　✓ 没有新增人名、数字</span>
+            <span class="wn">⚠ 第 5 条 33 字，超过建议的 30 字（只提醒，不会自动改）</span>
+          </div>
+          <div class="ft"><span class="b">重新生成</span><span class="b ac">复制到剪贴板</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 历史 -->
+  <div>
+    <div class="cap">② 历史：左边按天列出，右边看那天的总结和原始记录，都能改、能补生成</div>
+    <div class="w">
+      <div class="tb"><span>每日工作梳理</span><span class="c"><span>—</span><span>☐</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="nv"><div>今日</div><div class="on">历史</div><div>设置</div></div>
+        <div class="pg">
+          <div class="hd"><div><div class="d">历史</div><div class="s">本月 11 天有记录，1 天没生成总结</div></div></div>
+          <div class="hist">
+            <div class="days">
+              <div class="mo">2026 年 10 月</div>
+              <div class="dy"><span>10.16 周五</span><span class="st p">未生成</span></div>
+              <div class="dy on"><span>10.15 周四</span><span class="st g">已生成</span></div>
+              <div class="dy"><span>10.14 周三</span><span class="st g">已生成</span></div>
+              <div class="dy"><span>10.13 周二</span><span class="st g">已生成</span></div>
+              <div class="dy"><span>10.12 周一</span><span class="st g">已生成</span></div>
+              <div class="dy"><span>10.9 周五</span><span class="st g">已生成</span></div>
+            </div>
+            <div class="det">
+              <div class="lb"><span>总结</span><a>复制</a></div>
+              <div class="doc2">张三10.15工作梳理
+1.拼多多收入确认填写
+2.合声计划县域ppt修改
+3.百应提现，计算。
+4.继续更换团播头像/背景头图
+5.共享直播间使用状况反馈，沟通…</div>
+              <div class="lb"><span>原始记录 6 条</span><a>重新生成这天</a></div>
+              <div class="mini">
+                <div>拼多多收入确认填写<span class="t">拼多多</span></div>
+                <div>合声计划县域ppt修改<span class="t">合声计划</span></div>
+                <div>百应提现，计算。<span class="t">百应</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 漏掉的昨天 -->
+  <div>
+    <div class="cap">③ 周五 18:00 电脑关着，周一早上开机：今日页顶部补一条提醒</div>
+    <div class="w">
+      <div class="tb"><span>每日工作梳理</span><span class="c"><span>—</span><span>☐</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="nv"><div class="on">今日</div><div>历史</div><div>设置</div></div>
+        <div class="pg">
+          <div class="hd"><div><div class="d">10月19日 周一</div><div class="s">今日已记录 0 条 · 18:00 提醒</div></div></div>
+          <div class="ban"><span class="ic">!</span><span class="tx">上周五（10.16）有 4 条记录还没生成总结<small>那天 18:00 电脑没开机，提醒没弹出来</small></span><span class="b">忽略</span><span class="b pri">现在生成</span></div>
+          <div class="empty">今天还没记录<span>做完一件事按 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>S</kbd> 截一张</span></div>
+          <div class="ft"><span class="b">+ 添加一条</span><span class="b ac">生成今日总结</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,174 @@
+<h2>首次启动引导：四步走完</h2>
+<p class="subtitle">B 风格（Win11 原生）。同事第一次打开软件时依次看到这四页，每页都能"上一步"。看看步骤顺序、每页要填的东西对不对，有没有多余或缺的。</p>
+
+<style>
+  .ob * { box-sizing: border-box; }
+  .ob { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; color: #1b1b1b; text-align: left; }
+  .ob-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 22px; }
+  .ob-cap { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px 2px; }
+  .w { background: #f3f3f3; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.08); }
+  .w .tb { height: 32px; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; font-size: 12px; }
+  .w .tb .c { display: flex; height: 100%; } .w .tb .c span { width: 42px; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: 11px; }
+  .w .bd { display: flex; height: 430px; }
+  .st { width: 128px; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  .st div { font-size: 12.5px; padding: 7px 8px; border-radius: 4px; display: flex; gap: 8px; align-items: center; color: #5f5f5f; position: relative; }
+  .st .dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #8a8a8a; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+  .st .done .dot { background: #005fb8; border-color: #005fb8; color: #fff; }
+  .st .on { background: #eaeaea; color: #1b1b1b; font-weight: 600; }
+  .st .on::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: #005fb8; }
+  .st .on .dot { border-color: #005fb8; color: #005fb8; }
+  .pg { flex: 1; background: #f9f9f9; border-left: 1px solid #e5e5e5; border-top: 1px solid #e5e5e5; border-radius: 8px 0 0 0; display: flex; flex-direction: column; min-width: 0; }
+  .pc { flex: 1; padding: 20px 24px 8px; overflow: hidden; }
+  .pc h4 { font-size: 19px; font-weight: 600; margin: 0 0 2px; }
+  .pc .sub { font-size: 12.5px; color: #5f5f5f; margin-bottom: 14px; }
+  .f { margin-bottom: 12px; }
+  .f label { display: block; font-size: 12.5px; margin-bottom: 5px; }
+  .f .note { font-size: 11.5px; color: #707070; margin-top: 4px; }
+  .in { background: #fff; border: 1px solid #e5e5e5; border-bottom: 1px solid #8a8a8a; border-radius: 4px; padding: 6px 10px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .in.fo { border-bottom: 2px solid #005fb8; }
+  .in .mut { color: #8a8a8a; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .pv { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px 12px; font-size: 13px; line-height: 1.7; white-space: pre; }
+  .pv .lb { font-size: 11px; color: #707070; display: block; margin-bottom: 2px; white-space: normal; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12px; padding: 3px 8px 3px 10px; border-radius: 4px; background: #fff; border: 1px solid #e0e0e0; display: inline-flex; gap: 6px; align-items: center; }
+  .chip i { font-style: normal; color: #8a8a8a; font-size: 11px; }
+  .chip.add { border-style: dashed; color: #005fb8; padding: 3px 10px; }
+  .ta { background: #fff; border: 1px solid #e5e5e5; border-bottom: 1px solid #8a8a8a; border-radius: 4px; padding: 6px 10px; font-size: 12.5px; line-height: 1.6; color: #444; height: 74px; overflow: hidden; white-space: pre; }
+  .adv { font-size: 12.5px; color: #1b1b1b; padding: 8px 10px; border: 1px solid #e5e5e5; border-radius: 4px; background: #fbfbfb; display: flex; justify-content: space-between; }
+  .adv span:last-child { color: #707070; font-size: 11.5px; }
+  .btn { font-size: 13px; padding: 5px 14px; border-radius: 4px; border: 1px solid #d0d0d0; background: #fbfbfb; }
+  .btn.ac { background: #005fb8; color: #fff; border-color: #005fb8; }
+  .ok { font-size: 12px; color: #0f7b0f; }
+  .lnk { font-size: 12px; color: #005fb8; }
+  .tg { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; margin-bottom: 6px; font-size: 13px; gap: 10px; }
+  .tg small { display: block; font-size: 11.5px; color: #707070; }
+  .sw { width: 40px; height: 20px; border-radius: 10px; background: #005fb8; position: relative; flex-shrink: 0; }
+  .sw::after { content: ""; position: absolute; right: 4px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+  .sw.off { background: #fff; border: 1px solid #8a8a8a; } .sw.off::after { left: 4px; right: auto; top: 3px; background: #5f5f5f; }
+  .key { display: inline-flex; gap: 4px; } .key b { font-weight: 500; font-size: 12px; border: 1px solid #d0d0d0; border-bottom-width: 2px; border-radius: 4px; padding: 1px 7px; background: #fbfbfb; }
+  .fb { padding: 12px 24px; border-top: 1px solid #e5e5e5; background: #f3f3f3; display: flex; justify-content: space-between; align-items: center; }
+  .fb .r { display: flex; gap: 8px; }
+  .sel { position: relative; } .sel::after { content: "⌄"; color: #5f5f5f; }
+</style>
+
+<div class="ob ob-grid">
+
+  <!-- 1 -->
+  <div>
+    <div class="ob-cap">第 1 步：你是谁、标题长什么样</div>
+    <div class="w">
+      <div class="tb"><span>欢迎使用每日工作梳理</span><span class="c"><span>—</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="st">
+          <div class="on"><span class="dot">1</span>你是谁</div>
+          <div><span class="dot">2</span>接入 AI</div>
+          <div><span class="dot">3</span>你的写法</div>
+          <div><span class="dot">4</span>使用习惯</div>
+        </div>
+        <div class="pg">
+          <div class="pc">
+            <h4>先认识一下</h4>
+            <div class="sub">花一分钟设好，以后每天只需要按快捷键。</div>
+            <div class="f"><label>你的名字</label><div class="in fo">张三</div></div>
+            <div class="f"><label>标题后半句</label><div class="row"><div class="in" style="flex:0 0 auto"><span class="mut">名字 + 月.日</span></div><div class="in" style="flex:1">工作梳理</div></div>
+              <div class="note">日期自动生成，不补零：10.5 而不是 10.05</div></div>
+            <div class="pv"><span class="lb">成文预览</span>张三10.18工作梳理
+1.拼多多收入确认填写
+2.合声计划县域ppt修改</div>
+          </div>
+          <div class="fb"><span></span><span class="r"><span class="btn ac">下一步</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div>
+    <div class="ob-cap">第 2 步：填自己的 API Key</div>
+    <div class="w">
+      <div class="tb"><span>欢迎使用每日工作梳理</span><span class="c"><span>—</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="st">
+          <div class="done"><span class="dot">✓</span>你是谁</div>
+          <div class="on"><span class="dot">2</span>接入 AI</div>
+          <div><span class="dot">3</span>你的写法</div>
+          <div><span class="dot">4</span>使用习惯</div>
+        </div>
+        <div class="pg">
+          <div class="pc">
+            <h4>接入 AI</h4>
+            <div class="sub">每个人用自己的 Key，费用记在自己账上。</div>
+            <div class="f"><label>服务商</label><div class="in sel">通义千问（推荐，能识图）</div></div>
+            <div class="f"><label>API Key</label><div class="in fo">sk-••••••••••••••••3f2a <span class="lnk">粘贴</span></div>
+              <div class="note"><span class="lnk">没有 Key？3 分钟申请教程 →</span></div></div>
+            <div class="f"><label>模型 <span style="color:#707070;font-size:11.5px">· 已按服务商选好，一般不用改</span></label>
+              <div class="row"><div class="in" style="flex:1"><span><span class="mut">识图</span> qwen-vl-max</span></div><div class="in" style="flex:1"><span><span class="mut">写总结</span> qwen-plus</span></div></div></div>
+            <div class="row" style="margin-top:4px"><span class="btn">测试连接</span><span class="ok">✓ 能识图　✓ 能写总结　用时 2.1 秒</span></div>
+          </div>
+          <div class="fb"><span class="lnk">先跳过，只手动记录</span><span class="r"><span class="btn">上一步</span><span class="btn ac">下一步</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div>
+    <div class="ob-cap">第 3 步：分类、口吻、禁用词（提示词用"填空"的方式改）</div>
+    <div class="w">
+      <div class="tb"><span>欢迎使用每日工作梳理</span><span class="c"><span>—</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="st">
+          <div class="done"><span class="dot">✓</span>你是谁</div>
+          <div class="done"><span class="dot">✓</span>接入 AI</div>
+          <div class="on"><span class="dot">3</span>你的写法</div>
+          <div><span class="dot">4</span>使用习惯</div>
+        </div>
+        <div class="pg">
+          <div class="pc">
+            <h4>让 AI 像你一样写</h4>
+            <div class="sub">都可以先跳过，以后在设置里改。</div>
+            <div class="f"><label>你的工作分类 <span style="color:#707070;font-size:11.5px">· AI 会给每条打上，导出时按这个统计</span></label>
+              <div class="chips"><span class="chip">拼多多<i>✕</i></span><span class="chip">百应<i>✕</i></span><span class="chip">合声计划<i>✕</i></span><span class="chip">团播<i>✕</i></span><span class="chip">直播间<i>✕</i></span><span class="chip">其他<i>✕</i></span><span class="chip add">＋ 添加</span></div></div>
+            <div class="f"><label>贴一份你以前写过的总结 <span style="color:#707070;font-size:11.5px">· 可选，AI 会学你的口吻</span></label>
+              <div class="ta">张三10.15工作梳理
+1.拼多多收入确认填写
+2.合声计划县域ppt修改</div></div>
+            <div class="f"><label>不许出现的词</label>
+              <div class="chips"><span class="chip">完成<i>✕</i></span><span class="chip">今天<i>✕</i></span><span class="chip">顺利<i>✕</i></span><span class="chip">进一步<i>✕</i></span><span class="chip">有效推进<i>✕</i></span><span class="chip add">＋</span></div></div>
+            <div class="adv"><span>▸ 高级：直接改完整提示词</span><span>改坏了可一键恢复默认</span></div>
+          </div>
+          <div class="fb"><span></span><span class="r"><span class="btn">上一步</span><span class="btn ac">下一步</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div>
+    <div class="ob-cap">第 4 步：快捷键、提醒、自启，然后马上试一张</div>
+    <div class="w">
+      <div class="tb"><span>欢迎使用每日工作梳理</span><span class="c"><span>—</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="st">
+          <div class="done"><span class="dot">✓</span>你是谁</div>
+          <div class="done"><span class="dot">✓</span>接入 AI</div>
+          <div class="done"><span class="dot">✓</span>你的写法</div>
+          <div class="on"><span class="dot">4</span>使用习惯</div>
+        </div>
+        <div class="pg">
+          <div class="pc">
+            <h4>最后几个习惯</h4>
+            <div class="sub">做完一件事按快捷键，下班前它会提醒你。</div>
+            <div class="tg"><span>截图快捷键<small>点一下再按新组合即可更换</small></span><span class="row"><span class="key"><b>Ctrl</b><b>Alt</b><b>S</b></span><span class="ok">✓ 可用</span></span></div>
+            <div class="tg"><span>下班提醒时间</span><span class="in" style="padding:3px 10px">18 : 00</span></div>
+            <div class="tg"><span>只在工作日提醒<small>自动跳过法定节假日，调休上班照常提醒</small></span><span class="sw"></span></div>
+            <div class="tg"><span>开机自动启动<small>在右下角托盘待命，不弹窗</small></span><span class="sw"></span></div>
+          </div>
+          <div class="fb"><span></span><span class="r"><span class="btn">上一步</span><span class="btn ac">完成，试截一张</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

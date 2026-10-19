@@ -1,0 +1,131 @@
+<h2>工作分类：AI 自己识别、自己打标签</h2>
+<p class="subtitle">左边：引导第 3 步改成"先贴旧总结 → AI 读出分类"。右边：平时截图遇到现有分类对不上时，AI 自己新建一个，标成"新"，你可以保留、改名或并入已有分类。</p>
+
+<style>
+  .ob * { box-sizing: border-box; }
+  .ob { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; color: #1b1b1b; text-align: left; }
+  .ob-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 22px; }
+  .ob-cap { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px 2px; }
+  .w { background: #f3f3f3; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.08); }
+  .w .tb { height: 32px; display: flex; align-items: center; justify-content: space-between; padding-left: 14px; font-size: 12px; }
+  .w .tb .c { display: flex; height: 100%; } .w .tb .c span { width: 42px; display: flex; align-items: center; justify-content: center; opacity: .55; font-size: 11px; }
+  .w .bd { display: flex; height: 470px; }
+  .st { width: 128px; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  .st div { font-size: 12.5px; padding: 7px 8px; border-radius: 4px; display: flex; gap: 8px; align-items: center; color: #5f5f5f; position: relative; }
+  .st .dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #8a8a8a; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+  .st .done .dot { background: #005fb8; border-color: #005fb8; color: #fff; }
+  .st .on, .nv .on { background: #eaeaea; color: #1b1b1b; font-weight: 600; }
+  .st .on::before, .nv .on::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: #005fb8; }
+  .st .on .dot { border-color: #005fb8; color: #005fb8; }
+  .pg { flex: 1; background: #f9f9f9; border-left: 1px solid #e5e5e5; border-top: 1px solid #e5e5e5; border-radius: 8px 0 0 0; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .pc { flex: 1; padding: 18px 22px 8px; overflow: hidden; }
+  .pc h4 { font-size: 19px; font-weight: 600; margin: 0 0 2px; }
+  .pc .sub { font-size: 12.5px; color: #5f5f5f; margin-bottom: 12px; }
+  .f { margin-bottom: 12px; }
+  .f label { display: block; font-size: 12.5px; margin-bottom: 5px; }
+  .f .note { font-size: 11.5px; color: #707070; margin-top: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12px; padding: 3px 8px 3px 10px; border-radius: 4px; background: #fff; border: 1px solid #e0e0e0; display: inline-flex; gap: 6px; align-items: center; }
+  .chip i { font-style: normal; color: #8a8a8a; font-size: 11px; }
+  .chip.add { border-style: dashed; color: #005fb8; padding: 3px 10px; }
+  .chip .ai { font-size: 9.5px; color: #005fb8; background: #e0eefb; border-radius: 3px; padding: 0 4px; }
+  .ta { background: #fff; border: 1px solid #e5e5e5; border-bottom: 1px solid #8a8a8a; border-radius: 4px; padding: 6px 10px; font-size: 12.5px; line-height: 1.6; color: #444; height: 98px; overflow: hidden; white-space: pre; }
+  .btn { font-size: 12.5px; padding: 4px 12px; border-radius: 4px; border: 1px solid #d0d0d0; background: #fbfbfb; white-space: nowrap; }
+  .btn.ac { background: #005fb8; color: #fff; border-color: #005fb8; }
+  .ok { font-size: 12px; color: #0f7b0f; }
+  .tgl { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; font-size: 12.5px; gap: 10px; }
+  .tgl small { display: block; font-size: 11.5px; color: #707070; }
+  .sw { width: 40px; height: 20px; border-radius: 10px; background: #005fb8; position: relative; flex-shrink: 0; }
+  .sw::after { content: ""; position: absolute; right: 4px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+  .fb { padding: 11px 22px; border-top: 1px solid #e5e5e5; background: #f3f3f3; display: flex; justify-content: space-between; align-items: center; }
+  .fb .r { display: flex; gap: 8px; }
+  /* 主窗口片段 */
+  .nv { width: 128px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+  .nv div { font-size: 13px; padding: 7px 12px; border-radius: 4px; position: relative; }
+  .hd { padding: 16px 22px 10px; } .hd .d { font-size: 20px; font-weight: 600; } .hd .s { font-size: 12.5px; color: #5f5f5f; }
+  .ls { padding: 0 22px; display: flex; flex-direction: column; gap: 3px; }
+  .it { display: flex; align-items: center; gap: 10px; font-size: 13px; background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 9px 12px; }
+  .it .n { width: 14px; color: #8a8a8a; text-align: right; flex-shrink: 0; }
+  .it .t { flex: 1; min-width: 0; }
+  .it .tg { display: flex; gap: 4px; flex-shrink: 0; }
+  .it .tg span { font-size: 11px; padding: 1px 7px; border-radius: 4px; }
+  .pj { color: #707070; border: 1px solid #e0e0e0; }
+  .aitag { background: #e0eefb; color: #005fb8; }
+  .newtag { color: #005fb8; border: 1px dashed #005fb8; background: #f2f8fd; font-weight: 600; }
+  .it.hl { border-color: #99c3ea; box-shadow: 0 0 0 1px #99c3ea; }
+  .pop { position: absolute; right: 26px; top: 252px; width: 268px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: 12px 14px; font-size: 12.5px; z-index: 2; }
+  .pop::before { content: ""; position: absolute; right: 70px; top: -6px; width: 10px; height: 10px; background: #fff; border-left: 1px solid #e0e0e0; border-top: 1px solid #e0e0e0; transform: rotate(45deg); }
+  .pop .ttl { font-weight: 600; margin-bottom: 3px; }
+  .pop .ds { color: #5f5f5f; font-size: 11.5px; margin-bottom: 10px; line-height: 1.5; }
+  .pop .acts { display: flex; gap: 6px; }
+  .ft { padding: 12px 22px 16px; margin-top: auto; display: flex; gap: 10px; }
+  .ft .g { flex: 1; text-align: center; background: #005fb8; color: #fff; border-radius: 4px; padding: 9px; font-size: 14px; font-weight: 600; }
+  .ft .a { border: 1px solid #d0d0d0; background: #fbfbfb; border-radius: 4px; padding: 9px 12px; font-size: 13px; }
+</style>
+
+<div class="ob ob-grid">
+
+  <!-- 引导第 3 步 v2 -->
+  <div>
+    <div class="ob-cap">引导第 3 步（改版）：先贴旧总结，AI 从里面读出分类</div>
+    <div class="w">
+      <div class="tb"><span>欢迎使用每日工作梳理</span><span class="c"><span>—</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="st">
+          <div class="done"><span class="dot">✓</span>你是谁</div>
+          <div class="done"><span class="dot">✓</span>接入 AI</div>
+          <div class="on"><span class="dot">3</span>你的写法</div>
+          <div><span class="dot">4</span>使用习惯</div>
+        </div>
+        <div class="pg">
+          <div class="pc">
+            <h4>让 AI 像你一样写</h4>
+            <div class="sub">都可以跳过，分类也会在你使用过程中自己长出来。</div>
+            <div class="f"><label>贴几份你以前写过的总结 <span style="color:#707070;font-size:11.5px">· AI 学口吻，顺便认出你的工作分类</span></label>
+              <div class="ta">张三10.14工作梳理
+1.拼多多收入确认填写
+2.团播背景头图更换
+张三10.15工作梳理
+1.合声计划县域ppt修改
+2.百应提现，计算。</div>
+              <div class="row" style="margin-top:6px"><span class="btn">让 AI 识别分类</span><span class="ok">✓ 认出 5 个分类</span></div></div>
+            <div class="f"><label>你的工作分类 <span style="color:#707070;font-size:11.5px">· 可删可改，带 AI 标记的是它认出来的</span></label>
+              <div class="chips"><span class="chip">拼多多 <span class="ai">AI</span><i>✕</i></span><span class="chip">团播 <span class="ai">AI</span><i>✕</i></span><span class="chip">合声计划 <span class="ai">AI</span><i>✕</i></span><span class="chip">百应 <span class="ai">AI</span><i>✕</i></span><span class="chip">直播间 <span class="ai">AI</span><i>✕</i></span><span class="chip add">＋ 添加</span></div></div>
+            <div class="tgl"><span>遇到对不上的事，允许 AI 新建分类<small>关掉则只从上面这些里选，选不出就归"其他"</small></span><span class="sw"></span></div>
+          </div>
+          <div class="fb"><span></span><span class="r"><span class="btn">上一步</span><span class="btn ac">下一步</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主窗口：AI 新建分类 -->
+  <div>
+    <div class="ob-cap">平时使用：AI 给第 6 条新建了「会议」分类</div>
+    <div class="w">
+      <div class="tb"><span>每日工作梳理</span><span class="c"><span>—</span><span>☐</span><span>✕</span></span></div>
+      <div class="bd">
+        <div class="nv"><div class="on">今日</div><div>历史</div><div>设置</div></div>
+        <div class="pg">
+          <div class="hd"><div class="d">10月15日 周四</div><div class="s">今日已记录 6 条 · 18:00 提醒</div></div>
+          <div class="ls">
+            <div class="it"><span class="n">1</span><span class="t">拼多多收入确认填写</span><span class="tg"><span class="pj">拼多多</span><span class="aitag">AI</span></span></div>
+            <div class="it"><span class="n">2</span><span class="t">合声计划县域ppt修改</span><span class="tg"><span class="pj">合声计划</span><span class="aitag">AI</span></span></div>
+            <div class="it"><span class="n">3</span><span class="t">百应提现，计算。</span><span class="tg"><span class="pj">百应</span><span class="aitag" style="background:#eee;color:#555">手动</span></span></div>
+            <div class="it"><span class="n">4</span><span class="t">继续更换团播头像/背景头图</span><span class="tg"><span class="pj">团播</span><span class="aitag">AI</span></span></div>
+            <div class="it"><span class="n">5</span><span class="t">共享直播间使用状况反馈，沟通王老师…</span><span class="tg"><span class="pj">直播间</span><span class="aitag">AI</span></span></div>
+            <div class="it hl"><span class="n">6</span><span class="t">参加周例会，汇报账号数据</span><span class="tg"><span class="newtag">新 · 会议</span><span class="aitag">AI</span></span></div>
+          </div>
+          <div class="pop">
+            <div class="ttl">AI 新建了分类「会议」</div>
+            <div class="ds">现有分类里没有对得上的。不管它就自动保留；也可以现在处理：</div>
+            <div class="acts"><span class="btn ac">保留</span><span class="btn">改名</span><span class="btn">并入… ⌄</span></div>
+          </div>
+          <div class="ft"><span class="a">+ 添加一条</span><span class="g">生成今日总结</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
