@@ -352,6 +352,8 @@ toolbar.addEventListener('click', (e) => {
     act(btn.dataset.act);
   }
 });
+// 打字时点颜色、字号：不让输入框失焦（失焦就会把这段字定下来）
+styleRow.addEventListener('mousedown', (e) => e.preventDefault());
 styleRow.addEventListener('click', (e) => {
   const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-color], [data-size]'));
   if (!btn || !tool) return;

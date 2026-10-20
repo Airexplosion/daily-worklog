@@ -47,7 +47,9 @@ function open(p) {
   more.disabled = full;
   pick.disabled = full;
   idx.textContent = `今天第 ${p.index} 条${p.shots.length > 1 ? ` · ${p.shots.length} 张图` : ''}`;
-  input.value = p.note;
+  // 刚打的字还没存进草稿（防抖中）：留着输入框里的，马上存；不然用草稿里的
+  if (textTimer) saveText();
+  else input.value = p.note;
   if (p.message) showMsg(p.message);
   focusInput();
 }
@@ -62,6 +64,7 @@ function focusInput() {
 /** 打的字马上存进草稿（去掉某张、再截一张之前也先存，免得刷新时丢字） */
 function saveText() {
   clearTimeout(textTimer);
+  textTimer = 0;
   return invoke('note_text', { text: input.value }).catch(console.error);
 }
 
@@ -75,6 +78,7 @@ function send(skip) {
   if (sending) return;
   sending = true;
   clearTimeout(textTimer);
+  textTimer = 0;
   const cmd = skip ? invoke('note_skip') : invoke('note_submit', { text: input.value });
   cmd.catch((err) => {
     sending = false;
@@ -128,7 +132,7 @@ document.addEventListener('paste', async (e) => {
   e.preventDefault();
   await saveText();
   for (const f of /** @type {File[]} */ (files)) {
-    await invoke('add_image_bytes', new Uint8Array(await f.arrayBuffer())).catch((err) => showMsg(String(err)));
+    afterAdd(invoke('add_image_bytes', new Uint8Array(await f.arrayBuffer())));
   }
 });
 

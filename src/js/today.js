@@ -75,7 +75,7 @@ export function mountToday(host, shared) {
     if (!files.length) return;
     e.preventDefault();
     for (const f of /** @type {File[]} */ (files)) {
-      await api.addImageBytes(new Uint8Array(await f.arrayBuffer())).catch((err) => toast(errText(err)));
+      await api.addImageBytes(new Uint8Array(await f.arrayBuffer())).then((msg) => { if (msg) toast(msg); }).catch((err) => toast(errText(err)));
     }
   });
   addBtn.addEventListener('click', openAdd);

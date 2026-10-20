@@ -144,16 +144,29 @@ pub fn overlay_ready(app: &AppHandle, index: usize) {
     }
     let _ = w.show();
     state.overlay_shown.store(true, Ordering::SeqCst);
-    let under_cursor = {
+    let (under_cursor, holds_last_rect, last_rect_elsewhere) = {
         let frozen = state.frozen.lock().unwrap();
         let cursor = windows::cursor_pos();
-        frozen.as_ref().and_then(|f| f.monitors.iter().find(|m| m.index == index)).is_some_and(|m| {
+        let adding = state.session.lock().unwrap().as_ref().is_some_and(|s| s.primary == Action::Add);
+        let last = *state.last_rect.lock().unwrap();
+        let monitors = frozen.as_ref().map(|f| f.monitors.as_slice()).unwrap_or_default();
+        // 再截一张时，上次的框摆在哪块屏就把焦点给哪块，直接回车就能截
+        let rect_on = |i: usize| {
+            adding
+                && monitors
+                    .iter()
+                    .find(|m| m.index == i)
+                    .is_some_and(|m| capture_mode::last_rect_for(last.as_ref(), i, (m.x, m.y, m.width, m.height)).is_some())
+        };
+        let under = monitors.iter().find(|m| m.index == index).is_some_and(|m| {
             cursor.is_some_and(|(cx, cy)| {
                 cx >= m.x && cx < m.x + m.width as i32 && cy >= m.y && cy < m.y + m.height as i32
             })
-        })
+        });
+        let elsewhere = monitors.iter().any(|m| m.index != index && rect_on(m.index));
+        (under, rect_on(index), elsewhere)
     };
-    if under_cursor {
+    if holds_last_rect || (under_cursor && !last_rect_elsewhere) {
         let _ = w.set_focus();
     }
     let taken_at = state.frozen.lock().unwrap().as_ref().map(|f| f.taken_at);
@@ -248,6 +261,7 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
                     )
                 });
                 d.add_shots(&[rel]);
+                d.monitor = monitor;
                 if let Err(e) = state.store.save_draft(d) {
                     log::error!("保存草稿失败：{e}");
                 }
@@ -270,6 +284,8 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
             let rel = save_shot(&state, &capture::shot_id(frozen.taken_at.naive_local()), &img)?;
             if let Some(d) = state.draft.lock().unwrap().as_mut() {
                 d.add_shots(&[rel]);
+                // 补一句小窗和小条跟着最新这张所在的屏
+                d.monitor = monitor;
                 if let Err(e) = state.store.save_draft(d) {
                     log::error!("保存草稿失败：{e}");
                 }

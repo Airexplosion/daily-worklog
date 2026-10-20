@@ -45,7 +45,7 @@ export const api = {
   pickImages: () => invoke('pick_images'),
   /** @param {string[]} paths @returns {Promise<string | null>} */
   addImagePaths: (paths) => invoke('add_image_paths', { paths }),
-  /** 粘贴的图片文件字节 @param {Uint8Array} bytes */
+  /** 粘贴的图片文件字节；一张都没加成时返回提示 @param {Uint8Array} bytes @returns {Promise<string | null>} */
   addImageBytes: (bytes) => invoke('add_image_bytes', bytes),
   /** @param {string} rel shots/xxx.png @returns {string} */
   shotUrl: (rel) => `http://shot.localhost/${rel.split('/').pop()}`,

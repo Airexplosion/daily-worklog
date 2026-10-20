@@ -169,24 +169,23 @@ pub async fn pick_images(app: AppHandle, window: tauri::WebviewWindow) -> Option
     import_paths(app, paths, started).await
 }
 
-/// 粘贴的图片：body 是图片文件的字节
+/// 粘贴的图片：body 是图片文件的字节。一张都没加成时返回提示（读不出来、那条已经记下了）
 #[tauri::command]
-pub fn add_image_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+pub async fn add_image_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("没有收到图".into());
     };
     let bytes = bytes.clone();
     let started = flow::draft_id(&app);
-    std::thread::spawn(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         let (imgs, unreadable) = match crate::import::decode(&bytes) {
             Some(img) => (vec![img], 0),
             None => (Vec::new(), 1),
         };
-        if let Some(msg) = flow::add_images(&app, imgs, unreadable, started.as_deref()) {
-            log::warn!("粘贴的图没加：{msg}");
-        }
-    });
-    Ok(())
+        flow::add_images(&app, imgs, unreadable, started.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
