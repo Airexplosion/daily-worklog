@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "onboardingDone": true,
+  "userName": "测试用户",
+  "titleSuffix": "工作梳理",
+  "provider": "qwen",
+  "vision": {
+    "baseURL": "http://127.0.0.1:18080/v1",
+    "apiKey": "test-key",
+    "model": "mock-vl"
+  },
+  "summary": {
+    "baseURL": "",
+    "apiKey": "",
+    "model": ""
+  },
+  "separateSummary": false,
+  "sendImageToAI": true,
+  "tags": [
+    {
+      "name": "分类甲",
+      "createdBy": "ai",
+      "createdAt": "2026-01-01T00:00:00+08:00"
+    },
+    {
+      "name": "分类乙",
+      "createdBy": "ai",
+      "createdAt": "2026-01-01T00:00:00+08:00"
+    },
+    {
+      "name": "分类丙",
+      "createdBy": "ai",
+      "createdAt": "2026-01-01T00:00:00+08:00"
+    }
+  ],
+  "allowAINewTags": true,
+  "bannedWords": [
+    "完成",
+    "今天",
+    "共计",
+    "顺利",
+    "进一步",
+    "持续",
+    "有效推进"
+  ],
+  "styleExamples": "",
+  "promptOverrides": {
+    "vision": null,
+    "summary": null
+  },
+  "hotkey": "Ctrl+Alt+S",
+  "remindTime": "18:00",
+  "weekdayOnly": true,
+  "autoStart": true,
+  "shotsRetentionDays": 90,
+  "update": {
+    "lastCheckAt": null,
+    "snoozedVersion": null,
+    "snoozedUntil": null
+  },
+  "closeToTrayTipShown": false
+}

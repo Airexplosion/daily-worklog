@@ -5,3 +5,7 @@ src-tauri/gen/schemas/
 *.log
 .DS_Store
 Thumbs.db
+tests/e2e/data/
+tests/e2e/out/
+tests/e2e/imgs/
+tests/e2e/requests.jsonl

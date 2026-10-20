@@ -144,30 +144,32 @@ pub fn overlay_ready(app: &AppHandle, index: usize) {
     }
     let _ = w.show();
     state.overlay_shown.store(true, Ordering::SeqCst);
-    let (under_cursor, holds_last_rect, last_rect_elsewhere) = {
+    // 该拿焦点的那块屏：再截一张时是摆着上次那个框的屏（直接回车就能截），否则是鼠标所在的屏
+    let target = {
         let frozen = state.frozen.lock().unwrap();
         let cursor = windows::cursor_pos();
         let adding = state.session.lock().unwrap().as_ref().is_some_and(|s| s.primary == Action::Add);
         let last = *state.last_rect.lock().unwrap();
         let monitors = frozen.as_ref().map(|f| f.monitors.as_slice()).unwrap_or_default();
-        // 再截一张时，上次的框摆在哪块屏就把焦点给哪块，直接回车就能截
-        let rect_on = |i: usize| {
-            adding
-                && monitors
-                    .iter()
-                    .find(|m| m.index == i)
-                    .is_some_and(|m| capture_mode::last_rect_for(last.as_ref(), i, (m.x, m.y, m.width, m.height)).is_some())
-        };
-        let under = monitors.iter().find(|m| m.index == index).is_some_and(|m| {
-            cursor.is_some_and(|(cx, cy)| {
-                cx >= m.x && cx < m.x + m.width as i32 && cy >= m.y && cy < m.y + m.height as i32
-            })
+        let with_rect = monitors.iter().find(|m| {
+            adding && capture_mode::last_rect_for(last.as_ref(), m.index, (m.x, m.y, m.width, m.height)).is_some()
         });
-        let elsewhere = monitors.iter().any(|m| m.index != index && rect_on(m.index));
-        (under, rect_on(index), elsewhere)
+        let under_cursor = monitors.iter().find(|m| {
+            cursor.is_some_and(|(cx, cy)| cx >= m.x && cx < m.x + m.width as i32 && cy >= m.y && cy < m.y + m.height as i32)
+        });
+        with_rect.or(under_cursor).map(|m| m.index)
     };
-    if holds_last_rect || (under_cursor && !last_rect_elsewhere) {
-        let _ = w.set_focus();
+    // show() 会顺带激活窗口：别的屏后显示出来时，把焦点还给该拿焦点的那块（它已经显示了的话）
+    match target {
+        Some(t) if t == index => {
+            let _ = w.set_focus();
+        }
+        Some(t) => {
+            if let Some(tw) = app.get_webview_window(&windows::overlay_label(t)).filter(|tw| tw.is_visible().unwrap_or(false)) {
+                let _ = tw.set_focus();
+            }
+        }
+        None => {}
     }
     let taken_at = state.frozen.lock().unwrap().as_ref().map(|f| f.taken_at);
     if let Some(t) = taken_at {
