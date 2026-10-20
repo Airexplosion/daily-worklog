@@ -85,8 +85,8 @@ pub fn run() {
                     Some(body) => Response::builder()
                         .header("Content-Type", "image/bmp")
                         .header("Cache-Control", "no-store")
-                        // 框选页要在画布上读像素（马赛克、合成带标注的图），跨源图片得允许
-                        .header("Access-Control-Allow-Origin", "*")
+                        // 框选页要在画布上读像素（马赛克、合成带标注的图），只允许本程序自己的页面
+                        .header("Access-Control-Allow-Origin", "http://tauri.localhost")
                         .body(body),
                     None => Response::builder().status(404).body(Vec::new()),
                 };

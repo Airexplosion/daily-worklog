@@ -158,6 +158,10 @@ function rel(p) {
   return [Math.min(Math.max(p.x * s - r.x, 0), r.w), Math.min(Math.max(p.y * s - r.y, 0), r.h)];
 }
 
+/** 定格画面这一块 + 已画完的标注，画一次存着；拖动时只在它上面画正在画的这一笔（大选区打过马赛克也不卡） */
+const cache = document.createElement('canvas');
+let cacheKey = '';
+
 /** 画布盖在选框上：先画定格画面这一块，再按顺序画标注。没有标注时不显示（背景本来就一样） */
 function render() {
   if (!rect || !bgReady || (!shapes.length && !drawing)) {
@@ -169,9 +173,17 @@ function render() {
   if (paint.width !== r.w) paint.width = r.w;
   if (paint.height !== r.h) paint.height = r.h;
   Object.assign(paint.style, { display: 'block', left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` });
+  const key = `${r.x},${r.y},${r.w},${r.h},${shapes.length},${bg.src}`;
+  if (key !== cacheKey) {
+    cache.width = r.w;
+    cache.height = r.h;
+    const cctx = /** @type {CanvasRenderingContext2D} */ (cache.getContext('2d', { willReadFrequently: true }));
+    cctx.drawImage(bg, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    for (const sh of shapes) drawShape(cctx, sh, s);
+    cacheKey = key;
+  }
   const ctx = /** @type {CanvasRenderingContext2D} */ (paint.getContext('2d', { willReadFrequently: true }));
-  ctx.drawImage(bg, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
-  for (const sh of shapes) drawShape(ctx, sh, s);
+  ctx.drawImage(cache, 0, 0);
   if (drawing) drawShape(ctx, drawing, s);
 }
 
@@ -250,6 +262,7 @@ function undo() {
     return;
   }
   shapes.pop();
+  cacheKey = '';
   if (!shapes.length) setLocked(false);
   render();
 }
@@ -268,6 +281,7 @@ function reset() {
   busy = false;
   locked = false;
   shapes = [];
+  cacheKey = '';
   drawing = null;
   textAt = null;
   tool = null;
