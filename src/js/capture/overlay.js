@@ -300,9 +300,15 @@ async function act(name) {
   const r = toPhys(rect, scale());
   busy = true;
   try {
-    // 定格画面读不出来时（极少见）只能不带标注，至少截图是对的
-    const base = shapes.length ? await bg.decode().then(() => true, () => false) : false;
-    if (base) {
+    if (shapes.length) {
+      // 定格画面读不出来（极少见）就合成不了标注。不能退回不带标注的原图：打了码的地方会原样泄露出去
+      const base = await bg.decode().then(() => true, () => false);
+      if (!base) {
+        hint.className = 'warn';
+        hint.textContent = '画面没加载出来，标注合成不了；按 Esc 重新截';
+        busy = false;
+        return;
+      }
       // 有标注：在画布上按物理像素合成，把 RGBA 原始字节交给后端
       bgReady = true;
       render();
