@@ -1,5 +1,5 @@
 // @ts-check
-// 今日页：日期行、待处理提示、条目清单、添加一条、生成今日总结、右下角"截一张"
+// 今日页：日期行、待处理提示、条目清单、添加一条、从图片添加（也能拖进来、Ctrl+V）、生成今日总结、右下角"截一张"
 
 import { api } from './api.js';
 import { icons } from './icons.js';
@@ -25,6 +25,9 @@ export function mountToday(host, shared) {
   const addRow = h('div', { class: 'add-row', hidden: true });
   const genBtn = h('button', { class: 'btn accent big gen' }, '生成今日总结');
   const addBtn = h('button', { class: 'btn big', html: `${icons.add}<span>添加一条</span>` });
+  const pickBtn = h('button', { class: 'btn big', title: '电脑里已有的图片，也可以直接拖进来或 Ctrl+V', html: `${icons.image}<span>从图片添加</span>` });
+  const dropTitle = h('div', { class: 'drop-tt' });
+  const dropMask = h('div', { class: 'drop-mask', hidden: true }, dropTitle, h('div', { class: 'drop-sub' }, '支持 png / jpg，一次最多 9 张'));
   const fab = h('button', { class: 'fab', title: '截一张（与快捷键相同）', html: `${icons.camera}<span>截一张</span>` });
 
   host.append(
@@ -32,8 +35,9 @@ export function mountToday(host, shared) {
     shared.banners,
     pendingBar,
     h('div', { class: 'scroll' }, listHost, addRow),
-    h('footer', { class: 'page-ft' }, addBtn, genBtn),
+    h('footer', { class: 'page-ft' }, addBtn, pickBtn, genBtn),
     fab,
+    dropMask,
   );
 
   mute.addEventListener('click', async () => {
@@ -42,6 +46,38 @@ export function mountToday(host, shared) {
     refresh();
   });
   fab.addEventListener('click', () => api.captureStart('main'));
+  pickBtn.addEventListener('click', () => api.pickImages().then((msg) => { if (msg) toast(msg); }).catch((e) => toast(errText(e))));
+
+  // 电脑里已有的图片：拖到这一页上，或 Ctrl+V。只在今日页显示着时接
+  const showing = () => host.offsetParent !== null;
+  const isImage = (/** @type {string} */ p) => /\.(png|jpe?g|bmp|webp)$/i.test(p);
+  window.__TAURI__.webview.getCurrentWebview().onDragDropEvent((/** @type {{payload: {type: string, paths?: string[]}}} */ ev) => {
+    const p = ev.payload;
+    if (p.type === 'enter' && showing()) {
+      const n = (p.paths ?? []).filter(isImage).length;
+      dropTitle.textContent = n ? `松开，用这 ${n} 张图添加一条` : '松开，把这些文件加成一条（只认图片）';
+      dropMask.hidden = false;
+    } else if (p.type === 'leave') {
+      dropMask.hidden = true;
+    } else if (p.type === 'drop') {
+      const wasShown = !dropMask.hidden;
+      dropMask.hidden = true;
+      if (wasShown && p.paths?.length) api.addImagePaths(p.paths).then((msg) => { if (msg) toast(msg); }).catch((e) => toast(errText(e)));
+    }
+  });
+  document.addEventListener('paste', async (e) => {
+    const target = /** @type {HTMLElement | null} */ (e.target);
+    if (!showing() || (target && /^(INPUT|TEXTAREA)$/.test(target.tagName))) return;
+    const files = [...(e.clipboardData?.items ?? [])]
+      .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+      .map((i) => i.getAsFile())
+      .filter((f) => !!f);
+    if (!files.length) return;
+    e.preventDefault();
+    for (const f of /** @type {File[]} */ (files)) {
+      await api.addImageBytes(new Uint8Array(await f.arrayBuffer())).catch((err) => toast(errText(err)));
+    }
+  });
   addBtn.addEventListener('click', openAdd);
   genBtn.addEventListener('click', () => {
     if (day) window.dispatchEvent(new CustomEvent('open-summary', { detail: day.date }));

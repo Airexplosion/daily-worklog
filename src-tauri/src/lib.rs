@@ -7,6 +7,7 @@ pub mod draft;
 pub mod flow;
 pub mod format;
 pub mod holidays;
+pub mod import;
 pub mod items;
 pub mod model;
 pub mod recognize;
@@ -207,6 +208,9 @@ pub fn run() {
             commands::note_discard,
             commands::bar_done,
             commands::bar_current,
+            commands::add_image_paths,
+            commands::pick_images,
+            commands::add_image_bytes,
             commands::toast_hide,
             commands::toast_open_item,
             commands::take_main_intent,

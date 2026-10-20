@@ -501,3 +501,54 @@ pub fn discard_draft(app: &AppHandle) {
     state.store.clear_draft();
     restore_main_if_needed(app);
 }
+
+/// 电脑里已有的图：有没记完的一条就加进去（收起小条、把小窗叫到前面）；没有就新建一条，
+/// 日期按现在，补一句小窗放在主窗口那块屏，背后不变暗。一张都没加成时返回给调用方的提示
+pub fn add_images(app: &AppHandle, imgs: Vec<RgbaImage>, unreadable: usize) -> Option<String> {
+    let state = app.state::<AppState>();
+    let now = chrono::Local::now();
+    let room = state.draft.lock().unwrap().as_ref().map_or(MAX_SHOTS, |d| MAX_SHOTS.saturating_sub(d.shots.len()));
+    let over = imgs.len().saturating_sub(room);
+    let mut rels = Vec::new();
+    for img in imgs.into_iter().take(room) {
+        match save_shot(&state, &capture::shot_id(now.naive_local()), &img) {
+            Ok(rel) => rels.push(rel),
+            Err(e) => log::error!("{e}"),
+        }
+    }
+    let message = crate::import::outcome_message(over, unreadable);
+    {
+        let mut draft = state.draft.lock().unwrap();
+        if draft.is_none() {
+            let Some(first) = rels.first() else { return message };
+            let id = first.trim_start_matches("shots/").trim_end_matches(".png").to_string();
+            *draft = Some(Draft::new(
+                &id,
+                &now.format("%Y-%m-%d").to_string(),
+                &now.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+                main_monitor(app),
+            ));
+        }
+        let Some(d) = draft.as_mut() else { return message };
+        d.add_shots(&rels);
+        if let Err(e) = state.store.save_draft(d) {
+            log::error!("保存草稿失败：{e}");
+        }
+    }
+    log::info!("加了 {} 张已有的图", rels.len());
+    windows::hide_bar(app);
+    show_draft_note(app, false, message);
+    None
+}
+
+/// 主窗口所在那块屏；主窗口不在就用主屏
+fn main_monitor(app: &AppHandle) -> (i32, i32, u32, u32, f64) {
+    let m = app
+        .get_webview_window("main")
+        .filter(|w| w.is_visible().unwrap_or(false))
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+    m.map_or((0, 0, 1920, 1080, 1.0), |m| {
+        (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())
+    })
+}

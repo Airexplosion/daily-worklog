@@ -112,6 +112,67 @@ pub fn bar_current(app: AppHandle) -> Option<windows::BarView> {
     flow::bar_current(&app)
 }
 
+/// 拖进来的文件：按文件名排序，逐个读；认不出的计数。一张都没加成时返回提示
+#[tauri::command]
+pub async fn add_image_paths(app: AppHandle, paths: Vec<String>) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut paths: Vec<std::path::PathBuf> = paths.into_iter().map(std::path::PathBuf::from).collect();
+        crate::import::sort_paths(&mut paths);
+        let mut imgs = Vec::new();
+        let mut unreadable = 0;
+        for p in &paths {
+            match std::fs::read(p).ok().and_then(|b| crate::import::decode(&b)) {
+                Some(img) => imgs.push(img),
+                None => unreadable += 1,
+            }
+        }
+        flow::add_images(&app, imgs, unreadable)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// "加图片…""从图片添加"：选文件对话框，可以多选
+#[tauri::command]
+pub async fn pick_images(app: AppHandle, window: tauri::WebviewWindow) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dialog = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog
+            .dialog()
+            .file()
+            .set_title("选择图片")
+            .add_filter("图片", &["png", "jpg", "jpeg", "bmp", "webp"])
+            .set_parent(&window)
+            .blocking_pick_files()
+    })
+    .await
+    .ok()
+    .flatten()?;
+    let paths = picked.into_iter().filter_map(|f| f.into_path().ok()).map(|p| p.display().to_string()).collect();
+    add_image_paths(app, paths).await
+}
+
+/// 粘贴的图片：body 是图片文件的字节
+#[tauri::command]
+pub fn add_image_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("没有收到图".into());
+    };
+    let bytes = bytes.clone();
+    std::thread::spawn(move || {
+        let (imgs, unreadable) = match crate::import::decode(&bytes) {
+            Some(img) => (vec![img], 0),
+            None => (Vec::new(), 1),
+        };
+        if let Some(msg) = flow::add_images(&app, imgs, unreadable) {
+            log::warn!("粘贴的图没加：{msg}");
+        }
+    });
+    Ok(())
+}
+
 #[tauri::command]
 pub fn toast_hide(app: AppHandle) {
     windows::hide_toast(&app);

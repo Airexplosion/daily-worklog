@@ -28,7 +28,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream", "system-proxy", "http2", "charset"] }
 futures-util = "0.3"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
 xcap = "0.9"
 base64 = "0.22"
 semver = "1"

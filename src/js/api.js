@@ -41,6 +41,12 @@ export const api = {
   muteToday: () => invoke('mute_today'),
   /** @param {'main' | 'hotkey' | 'tray' | 'onboarding'} origin */
   captureStart: (origin) => invoke('capture_start', { origin }),
+  /** 选文件加图（有没记完的一条就加进去，没有就新建一条）；一张都没加成时返回提示 @returns {Promise<string | null>} */
+  pickImages: () => invoke('pick_images'),
+  /** @param {string[]} paths @returns {Promise<string | null>} */
+  addImagePaths: (paths) => invoke('add_image_paths', { paths }),
+  /** 粘贴的图片文件字节 @param {Uint8Array} bytes */
+  addImageBytes: (bytes) => invoke('add_image_bytes', bytes),
   /** @param {string} rel shots/xxx.png @returns {string} */
   shotUrl: (rel) => `http://shot.localhost/${rel.split('/').pop()}`,
   listen,
