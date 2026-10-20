@@ -18,8 +18,9 @@ pub struct FrozenMonitor {
     pub width: u32,
     pub height: u32,
     pub scale: f64,
-    /// 共享：给页面编码定格画面时拿一份引用就放锁，不卡住显示框选窗口
-    pub image: std::sync::Arc<RgbaImage>,
+    /// 整屏画面，已经是"32 位、从上到下"的 BMP（就是 Windows 抓屏原生的 BGRA 排列）：
+    /// 页面直接拿去显示，不用再编码；裁剪时只转选中的那一块。共享引用，给页面时拿一份就放锁
+    pub bmp: std::sync::Arc<Vec<u8>>,
 }
 
 pub struct Frozen {
@@ -49,15 +50,18 @@ pub fn grab_all() -> Result<Frozen, String> {
                 scope.spawn(move || {
                     let monitors = xcap::Monitor::all().map_err(|e| format!("枚举显示器失败：{e}"))?;
                     let m = monitors.get(index).ok_or("显示器数量变了")?;
-                    let image = m.capture_image().map_err(|e| format!("截屏失败：{e}"))?;
+                    let (x, y) = (m.x().unwrap_or(0), m.y().unwrap_or(0));
+                    let width = m.width().map_err(|e| format!("读显示器大小失败：{e}"))?;
+                    let height = m.height().map_err(|e| format!("读显示器大小失败：{e}"))?;
+                    let bmp = grab_bmp(x, y, width, height)?;
                     Ok(FrozenMonitor {
                         index,
-                        x: m.x().unwrap_or(0),
-                        y: m.y().unwrap_or(0),
-                        width: image.width(),
-                        height: image.height(),
+                        x,
+                        y,
+                        width,
+                        height,
                         scale: m.scale_factor().unwrap_or(1.0) as f64,
-                        image: std::sync::Arc::new(image),
+                        bmp: std::sync::Arc::new(bmp),
                     })
                 })
             })
@@ -65,6 +69,85 @@ pub fn grab_all() -> Result<Frozen, String> {
         handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("截屏线程崩溃".into()))).collect()
     });
     Ok(Frozen { taken_at, monitors: collect_monitors(results)? })
+}
+
+/// 抓一块屏：一次 BitBlt 直接拷进从上到下的 32 位 DIB，拷出来就是 BMP 的像素部分，不逐像素转换
+fn grab_bmp(x: i32, y: i32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GdiFlush, GetDC, ReleaseDC, SelectObject,
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
+    };
+    let (w, h) = (width as i32, height as i32);
+    if w <= 0 || h <= 0 {
+        return Err("显示器大小不对".into());
+    }
+    unsafe {
+        let screen = GetDC(null_mut());
+        if screen.is_null() {
+            return Err("截屏失败：拿不到屏幕".into());
+        }
+        let mem = CreateCompatibleDC(screen);
+        let mut info: BITMAPINFO = std::mem::zeroed();
+        info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        info.bmiHeader.biWidth = w;
+        info.bmiHeader.biHeight = -h; // 负数：从上到下
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        let mut bits: *mut std::ffi::c_void = null_mut();
+        let dib = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
+        let result = if mem.is_null() || dib.is_null() || bits.is_null() {
+            Err("截屏失败：内存不够".to_string())
+        } else {
+            let old = SelectObject(mem, dib);
+            let ok = BitBlt(mem, 0, 0, w, h, screen, x, y, SRCCOPY);
+            GdiFlush();
+            let out = if ok != 0 {
+                let pixels = std::slice::from_raw_parts(bits as *const u8, (width as usize) * (height as usize) * 4);
+                Ok(bmp_from_bgra(width, height, pixels))
+            } else {
+                Err("截屏失败：复制屏幕画面失败".to_string())
+            };
+            SelectObject(mem, old);
+            out
+        };
+        if !dib.is_null() {
+            DeleteObject(dib);
+        }
+        if !mem.is_null() {
+            DeleteDC(mem);
+        }
+        ReleaseDC(null_mut(), screen);
+        result
+    }
+}
+
+/// 32 位、从上到下的 BMP 文件头（54 字节）
+pub fn bmp_header(w: u32, h: u32) -> [u8; 54] {
+    let pixels = (w as usize) * (h as usize) * 4;
+    let mut out = [0u8; 54];
+    out[..2].copy_from_slice(b"BM");
+    out[2..6].copy_from_slice(&((54 + pixels) as u32).to_le_bytes());
+    out[10..14].copy_from_slice(&54u32.to_le_bytes());
+    out[14..18].copy_from_slice(&40u32.to_le_bytes());
+    out[18..22].copy_from_slice(&(w as i32).to_le_bytes());
+    out[22..26].copy_from_slice(&(-(h as i32)).to_le_bytes());
+    out[26..28].copy_from_slice(&1u16.to_le_bytes());
+    out[28..30].copy_from_slice(&32u16.to_le_bytes());
+    out[34..38].copy_from_slice(&(pixels as u32).to_le_bytes());
+    out
+}
+
+/// BGRA 像素（从上到下）直接拼成 BMP；alpha 一律改成不透明（GDI 抓下来的 alpha 常是 0）
+pub fn bmp_from_bgra(w: u32, h: u32, bgra: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(54 + bgra.len());
+    out.extend_from_slice(&bmp_header(w, h));
+    out.extend_from_slice(bgra);
+    for px in out[54..].chunks_exact_mut(4) {
+        px[3] = 255;
+    }
+    out
 }
 
 /// 只要有一块屏截到就继续；全都失败才报错
@@ -104,26 +187,23 @@ pub fn crop(frozen: &Frozen, index: usize, rect: PhysRect) -> Option<RgbaImage> 
     }
     let w = rect.w.min(m.width - rect.x);
     let h = rect.h.min(m.height - rect.y);
-    Some(imageops::crop_imm(m.image.as_ref(), rect.x, rect.y, w, h).to_image())
+    let px = m.bmp.get(54..)?;
+    let stride = m.width as usize * 4;
+    if px.len() < stride * m.height as usize {
+        return None;
+    }
+    // 只把选中的这块从 BGRA 转成 RGBA
+    Some(RgbaImage::from_fn(w, h, |cx, cy| {
+        let i = (rect.y + cy) as usize * stride + (rect.x + cx) as usize * 4;
+        Rgba([px[i + 2], px[i + 1], px[i], 255])
+    }))
 }
 
-/// 32 位、从上到下的 BMP，给框选窗口当背景用（不压缩，最快）
+/// RGBA 图转成 32 位、从上到下的 BMP（测试和老数据用；截屏本身直接得到 BMP）
 pub fn to_bmp(img: &RgbaImage) -> Vec<u8> {
     let (w, h) = img.dimensions();
-    let pixels = (w as usize) * (h as usize) * 4;
-    let mut out = Vec::with_capacity(54 + pixels);
-    out.extend_from_slice(b"BM");
-    out.extend_from_slice(&((54 + pixels) as u32).to_le_bytes());
-    out.extend_from_slice(&0u32.to_le_bytes());
-    out.extend_from_slice(&54u32.to_le_bytes());
-    out.extend_from_slice(&40u32.to_le_bytes());
-    out.extend_from_slice(&(w as i32).to_le_bytes());
-    out.extend_from_slice(&(-(h as i32)).to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&32u16.to_le_bytes());
-    out.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
-    out.extend_from_slice(&(pixels as u32).to_le_bytes());
-    out.extend_from_slice(&[0u8; 16]);
+    let mut out = Vec::with_capacity(54 + img.as_raw().len());
+    out.extend_from_slice(&bmp_header(w, h));
     for p in img.as_raw().chunks_exact(4) {
         out.extend_from_slice(&[p[2], p[1], p[0], p[3]]);
     }
@@ -257,27 +337,47 @@ mod tests {
         RgbaImage::from_fn(w, h, |x, y| Rgba([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8, 255]))
     }
 
-    fn frozen_with(img: RgbaImage) -> Frozen {
+    fn frozen_with(img: &RgbaImage) -> Frozen {
         let (w, h) = img.dimensions();
         Frozen {
             taken_at: chrono::Local::now(),
-            monitors: vec![FrozenMonitor { index: 0, x: -2560, y: 0, width: w, height: h, scale: 1.5, image: std::sync::Arc::new(img) }],
+            monitors: vec![FrozenMonitor { index: 0, x: -2560, y: 0, width: w, height: h, scale: 1.5, bmp: std::sync::Arc::new(to_bmp(img)) }],
         }
     }
 
     #[test]
     fn crop_exact_pixels() {
-        let f = frozen_with(synthetic(100, 80));
+        let img = synthetic(100, 80);
+        let f = frozen_with(&img);
         let out = crop(&f, 0, PhysRect { x: 10, y: 20, w: 30, h: 40 }).unwrap();
         assert_eq!(out.dimensions(), (30, 40));
         for (x, y, p) in out.enumerate_pixels() {
-            assert_eq!(*p, *f.monitors[0].image.get_pixel(x + 10, y + 20));
+            assert_eq!(*p, *img.get_pixel(x + 10, y + 20));
         }
     }
 
     #[test]
+    fn bmp_from_bgra_is_header_plus_opaque_pixels() {
+        // GDI 抓下来的 alpha 常是 0：存成 BMP 时一律不透明
+        let bmp = bmp_from_bgra(2, 1, &[1, 2, 3, 0, 4, 5, 6, 0]);
+        assert_eq!(&bmp[..54], &bmp_header(2, 1));
+        assert_eq!(&bmp[54..], &[1, 2, 3, 255, 4, 5, 6, 255]);
+    }
+
+    #[test]
+    fn crop_reads_bgra_and_is_opaque() {
+        let bmp = bmp_from_bgra(2, 1, &[10, 20, 30, 0, 40, 50, 60, 0]);
+        let f = Frozen {
+            taken_at: chrono::Local::now(),
+            monitors: vec![FrozenMonitor { index: 0, x: 0, y: 0, width: 2, height: 1, scale: 1.0, bmp: std::sync::Arc::new(bmp) }],
+        };
+        let out = crop(&f, 0, PhysRect { x: 1, y: 0, w: 1, h: 1 }).unwrap();
+        assert_eq!(*out.get_pixel(0, 0), Rgba([60, 50, 40, 255]));
+    }
+
+    #[test]
     fn crop_clamps_to_bounds() {
-        let f = frozen_with(synthetic(100, 80));
+        let f = frozen_with(&synthetic(100, 80));
         let out = crop(&f, 0, PhysRect { x: 90, y: 70, w: 50, h: 50 }).unwrap();
         assert_eq!(out.dimensions(), (10, 10));
         assert!(crop(&f, 0, PhysRect { x: 200, y: 0, w: 5, h: 5 }).is_none());
@@ -295,7 +395,7 @@ mod tests {
 
     #[test]
     fn one_failed_monitor_does_not_abort() {
-        let ok = FrozenMonitor { index: 1, x: 0, y: 0, width: 2, height: 2, scale: 1.0, image: std::sync::Arc::new(synthetic(2, 2)) };
+        let ok = FrozenMonitor { index: 1, x: 0, y: 0, width: 2, height: 2, scale: 1.0, bmp: std::sync::Arc::new(to_bmp(&synthetic(2, 2))) };
         let got = collect_monitors(vec![Err("屏 0 截不到".into()), Ok(ok)]).unwrap();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].index, 1);
