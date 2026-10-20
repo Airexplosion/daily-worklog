@@ -98,6 +98,7 @@ export function mountSettings(host) {
     const days = field(String(s.shotsRetentionDays), (v) => save({ shotsRetentionDays: Number(v) || 90 }), { type: 'number', min: 1, max: 3650 });
     body.append(section('使用习惯',
       row('截图快捷键', '点一下，再按新的组合', hotkeyRecorder(s.hotkey, () => flash())),
+      row('框选后按回车', '另一种操作：Tab 记录，Ctrl+C 复制', select([{ value: 'copy', label: '复制' }, { value: 'record', label: '记录（进补一句）' }], s.enterAction ?? 'copy', (v) => save({ enterAction: v }))),
       row('下班提醒时间', null, time),
       row('只在工作日提醒', view.holidayStale ? '节假日数据过期（没有今年的），暂时按周一到周五提醒，请更新软件' : '自动跳过法定节假日，调休上班照常提醒', toggle(s.weekdayOnly, (on) => save({ weekdayOnly: on }))),
       row('开机自动启动', '在右下角托盘待命，不弹窗', toggle(s.autoStart, (on) => save({ autoStart: on }))),

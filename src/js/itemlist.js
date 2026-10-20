@@ -23,7 +23,7 @@ export function renderItems(host, opts) {
     host.append(
       h('div', { class: 'empty' },
         h('div', { class: 'empty-title' }, opts.compact ? '这天没有记录' : '今天还没记录'),
-        opts.compact ? null : h('div', { class: 'empty-sub' }, '做完一件事按 ', ...keys, ' 截一张')),
+        opts.compact ? null : h('div', { class: 'empty-sub' }, '做完一件事按 ', ...keys, ' 截图，点「记录」记一条')),
     );
     return;
   }

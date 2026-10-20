@@ -216,8 +216,9 @@ function stepHabits() {
   const s = view.settings;
   page.append(
     h('h2', {}, '最后几个习惯'),
-    h('p', { class: 'lead' }, '做完一件事按快捷键，下班前它会提醒你。'),
+    h('p', { class: 'lead' }, '做完一件事按快捷键截图，点「记录」（或按 Tab）记进来；下班前它会提醒你。'),
     row('截图快捷键', '点一下再按新组合即可更换', hotkeyRecorder(s.hotkey)),
+    row('框选后按回车', '平时截图多是复制了发给别人，就选"复制"；只用它记工作，就选"记录"', select([{ value: 'copy', label: '复制' }, { value: 'record', label: '记录（进补一句）' }], s.enterAction ?? 'copy', (v) => savePatch({ enterAction: v }))),
     row('下班提醒时间', null, field(s.remindTime, (v) => savePatch({ remindTime: v }), { type: 'time' })),
     row('只在工作日提醒', '自动跳过法定节假日，调休上班照常提醒', toggle(s.weekdayOnly, (on) => savePatch({ weekdayOnly: on }))),
     row('开机自动启动', '在右下角托盘待命，不弹窗', toggle(s.autoStart, (on) => savePatch({ autoStart: on }))),

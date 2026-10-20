@@ -245,6 +245,7 @@ pub async fn finish_onboarding(app: AppHandle, try_capture: bool) -> Result<(), 
     let state = app.state::<AppState>();
     {
         let mut s = state.settings.lock().unwrap();
+        onboarding_defaults(&mut s);
         s.onboarding_done = true;
         state.store.save_settings(&s).map_err(save_err)?;
     }
@@ -304,4 +305,27 @@ pub fn snooze_update(app: AppHandle, version: String) -> Result<(), String> {
 #[tauri::command]
 pub fn pending_update(app: AppHandle) -> Option<crate::update::UpdateInfo> {
     app.state::<AppState>().update.lock().unwrap().clone()
+}
+
+/// 走完引导时，没选过"框选后按回车"的按"复制"
+pub fn onboarding_defaults(s: &mut Settings) {
+    if s.enter_action.is_none() {
+        s.enter_action = Some(crate::model::EnterAction::Copy);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{EnterAction, Settings};
+
+    #[test]
+    fn onboarding_defaults_sets_copy_once() {
+        let mut s = Settings::default();
+        onboarding_defaults(&mut s);
+        assert_eq!(s.enter_action, Some(EnterAction::Copy));
+        s.enter_action = Some(EnterAction::Record);
+        onboarding_defaults(&mut s);
+        assert_eq!(s.enter_action, Some(EnterAction::Record));
+    }
 }
