@@ -178,6 +178,47 @@ pub fn stack_vertical(imgs: &[RgbaImage]) -> RgbaImage {
     out
 }
 
+/// 几张图从左到右拼成一张：高取最高那张，顶对齐，空出来的地方填白
+pub fn stack_horizontal(imgs: &[RgbaImage]) -> RgbaImage {
+    let w = imgs.iter().map(|i| i.width()).sum::<u32>().max(1);
+    let h = imgs.iter().map(|i| i.height()).max().unwrap_or(1).max(1);
+    let mut out = RgbaImage::from_pixel(w, h, Rgba([255, 255, 255, 255]));
+    let mut x = 0i64;
+    for img in imgs {
+        imageops::replace(&mut out, img, x, 0);
+        x += img.width() as i64;
+    }
+    out
+}
+
+/// 一组图拼成一张发给 AI：先各自缩到长边 ≤1600（省内存），再看并排和上下拼哪种最后缩得少，
+/// 竖长的聊天记录多半并排，横宽的表格多半上下拼。一样时上下拼
+pub fn compose_group(imgs: &[RgbaImage]) -> RgbaImage {
+    let small: Vec<RgbaImage> = imgs.iter().map(|i| shrink_to(i, AI_MAX_SIDE)).collect();
+    let (sum_w, max_w) = small.iter().fold((0u32, 0u32), |(s, m), i| (s + i.width(), m.max(i.width())));
+    let (sum_h, max_h) = small.iter().fold((0u32, 0u32), |(s, m), i| (s + i.height(), m.max(i.height())));
+    let vertical_long = max_w.max(sum_h);
+    let horizontal_long = sum_w.max(max_h);
+    if horizontal_long < vertical_long {
+        stack_horizontal(&small)
+    } else {
+        stack_vertical(&small)
+    }
+}
+
+/// 长边超过 max 就等比缩
+pub fn shrink_to(img: &RgbaImage, max: u32) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let long = w.max(h);
+    if long <= max {
+        return img.clone();
+    }
+    let ratio = max as f64 / long as f64;
+    let nw = ((w as f64 * ratio).round() as u32).max(1);
+    let nh = ((h as f64 * ratio).round() as u32).max(1);
+    imageops::resize(img, nw, nh, FilterType::Triangle)
+}
+
 /// 等比缩小到不超过 max_w × max_h，本来就小的不放大
 pub fn thumbnail_fit(img: &RgbaImage, max_w: u32, max_h: u32) -> RgbaImage {
     let (w, h) = img.dimensions();
@@ -334,5 +375,32 @@ mod tests {
         assert_eq!(*s.get_pixel(2, 0), Rgba([255, 255, 255, 255]));
         assert_eq!(*s.get_pixel(0, 1), Rgba([0, 0, 255, 255]));
         assert_eq!(*s.get_pixel(2, 2), Rgba([0, 0, 255, 255]));
+    }
+
+    #[test]
+    fn compose_puts_tall_screens_side_by_side() {
+        // 两屏竖长的聊天记录：并排不用缩，上下拼要缩到 2/3
+        let a = RgbaImage::from_pixel(800, 1200, Rgba([255, 0, 0, 255]));
+        let b = RgbaImage::from_pixel(800, 1200, Rgba([0, 0, 255, 255]));
+        let c = compose_group(&[a, b]);
+        assert_eq!(c.dimensions(), (1600, 1200));
+        assert_eq!(*c.get_pixel(10, 10), Rgba([255, 0, 0, 255]));
+        assert_eq!(*c.get_pixel(1590, 10), Rgba([0, 0, 255, 255]));
+    }
+
+    #[test]
+    fn compose_stacks_wide_tables() {
+        let a = RgbaImage::from_pixel(1600, 500, Rgba([255, 0, 0, 255]));
+        let b = RgbaImage::from_pixel(1600, 500, Rgba([0, 0, 255, 255]));
+        assert_eq!(compose_group(&[a, b]).dimensions(), (1600, 1000));
+    }
+
+    #[test]
+    fn compose_shrinks_each_image_first() {
+        // 超大图先各自缩到长边 1600，拼出来不会是几万像素
+        let big = RgbaImage::new(6400, 400);
+        let small = RgbaImage::new(100, 100);
+        let c = compose_group(&[big, small]);
+        assert!(c.width() <= 1700 && c.height() <= 1700, "{:?}", c.dimensions());
     }
 }

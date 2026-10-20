@@ -61,7 +61,7 @@ pub fn is_too_many_images(e: &AiError) -> bool {
     }
 }
 
-/// 按上限分组，相邻的上下拼成一张，再压成发给 AI 的 JPEG。返回（图，有没有拼过）
+/// 按上限分组，相邻的拼成一张（并排或上下，看哪种缩得少），再压成发给 AI 的 JPEG。返回（图，有没有拼过）
 pub fn prepare_images(imgs: &[image::RgbaImage], limit: usize) -> (Vec<Vec<u8>>, bool) {
     let sizes = capture::group_sizes(imgs.len(), limit);
     let merged = sizes.iter().any(|&n| n > 1);
@@ -70,7 +70,7 @@ pub fn prepare_images(imgs: &[image::RgbaImage], limit: usize) -> (Vec<Vec<u8>>,
     for n in sizes {
         let group = &imgs[i..i + n];
         i += n;
-        out.push(if n == 1 { capture::ai_jpeg(&group[0]) } else { capture::ai_jpeg(&capture::stack_vertical(group)) });
+        out.push(if n == 1 { capture::ai_jpeg(&group[0]) } else { capture::ai_jpeg(&capture::compose_group(group)) });
     }
     (out, merged)
 }
@@ -164,7 +164,10 @@ async fn process(app: &AppHandle, job: Job) {
     let imgs: Arc<Vec<image::RgbaImage>> = if with_image {
         let dir = state.store.dir().to_path_buf();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
-            shots.iter().filter_map(|rel| image::open(dir.join(rel)).ok().map(|img| img.to_rgba8())).collect::<Vec<_>>()
+            shots
+                .iter()
+                .filter_map(|rel| image::open(dir.join(rel)).ok().map(|img| capture::shrink_to(&img.to_rgba8(), capture::AI_MAX_SIDE)))
+                .collect::<Vec<_>>()
         })
         .await
         .unwrap_or_default();

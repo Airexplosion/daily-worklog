@@ -106,7 +106,7 @@ pub const ANNOTATION_NOTE: &str =
 pub fn multi_image_note(n: usize, merged: bool) -> String {
     let mut s = format!("这次给你的是 {n} 张截图，是同一件事，按顺序看，合起来只写一条。");
     if merged {
-        s.push_str("有的图是几张截图上下拼在一起的，从上往下看。");
+        s.push_str("有的图是几张截图按顺序拼在一起的（从左到右或从上到下）。");
     }
     s
 }
@@ -122,7 +122,7 @@ pub fn vision_prompt(s: &Settings, images: usize, merged: bool) -> String {
     if images >= 2 {
         parts.push(multi_image_note(images, merged));
     } else if merged {
-        parts.push("这张图是几张截图上下拼在一起的，是同一件事，从上往下看，合起来只写一条。".to_string());
+        parts.push("这张图是几张截图按顺序拼在一起的（从左到右或从上到下），是同一件事，合起来只写一条。".to_string());
     }
     if images >= 1 {
         parts.push(ANNOTATION_NOTE.to_string());
@@ -215,8 +215,9 @@ mod tests {
         let three = vision_prompt(&s, 3, false);
         assert!(three.contains("这次给你的是 3 张截图") && three.contains(ANNOTATION_NOTE), "{three}");
         assert!(three.ends_with(VISION_TAIL));
-        assert!(!three.contains("上下拼在一起"));
-        assert!(vision_prompt(&s, 3, true).contains("上下拼在一起"));
+        assert!(!three.contains("拼在一起"));
+        let merged = vision_prompt(&s, 3, true);
+        assert!(merged.contains("拼在一起") && merged.contains("从左到右") && merged.contains("从上到下"), "{merged}");
     }
 
     #[test]
