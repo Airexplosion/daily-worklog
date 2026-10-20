@@ -10,17 +10,44 @@
     #bg.ready { visibility: visible; }
     #dim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); }
     #sel { position: fixed; display: none; border: 1.5px solid #4ca0ff; box-shadow: 0 0 0 99999px rgba(0, 0, 0, 0.45); box-sizing: border-box; }
-    .h { position: absolute; width: 7px; height: 7px; background: #fff; border: 1.5px solid #4ca0ff; box-sizing: border-box; }
-    #size { position: fixed; display: none; background: rgba(20, 20, 20, 0.88); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #sel .h { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1.5px solid #4ca0ff; box-sizing: border-box; }
+    #sel .h[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+    #sel .h[data-h="n"] { left: 50%; top: 0; cursor: ns-resize; }
+    #sel .h[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+    #sel .h[data-h="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+    #sel .h[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+    #sel .h[data-h="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+    #sel .h[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+    #sel .h[data-h="w"] { left: 0; top: 50%; cursor: ew-resize; }
+    body.dragging #sel .h, body.locked #sel .h { display: none; }
+    #size { position: fixed; display: none; background: rgba(20, 20, 20, 0.88); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
     #hint { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); background: rgba(32, 32, 32, 0.88); color: #fff; font-size: 13px; padding: 7px 14px; border-radius: 6px; white-space: nowrap; pointer-events: none; }
     #hint b { font-weight: 500; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 3px; padding: 0 5px; margin: 0 3px; font-size: 12px; }
+    #hint.warn { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-stroke); font-weight: 600; }
     .cross { position: fixed; background: rgba(76, 160, 255, 0.55); pointer-events: none; }
     #cx { left: 0; right: 0; height: 1px; }
     #cy { top: 0; bottom: 0; width: 1px; }
-    body.selecting #dim { display: none; }
+    body.selecting #dim, body.selected .cross { display: none; }
     body.backdrop { cursor: default; }
     body.backdrop #dim { display: block; background: rgba(0, 0, 0, 0.3); }
-    body.backdrop #sel, body.backdrop #size, body.backdrop #hint, body.backdrop .cross { display: none; }
+    body.backdrop #sel, body.backdrop #size, body.backdrop #hint, body.backdrop .cross, body.backdrop .tb { display: none; }
+
+    /* 工具栏 */
+    .tb { position: fixed; display: flex; align-items: center; gap: 2px; background: #f9f9f9; border-radius: 7px; padding: 4px;
+      box-shadow: var(--shadow-flyout); white-space: nowrap; cursor: default; font-size: 12.5px; color: var(--text); }
+    .tb[hidden] { display: none; }
+    .tb .i { width: 30px; height: 30px; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; padding: 0; }
+    .tb .i svg { width: 18px; height: 18px; }
+    .tb .i:hover { background: var(--bg-hover); }
+    .tb .i.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+    .tb .i:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .tb .sep { width: 1px; height: 20px; background: var(--stroke); margin: 0 4px; }
+    .tb .act { height: 30px; border-radius: var(--radius-control); padding: 0 10px; display: flex; align-items: center; gap: 6px; font: inherit;
+      border: 1px solid var(--stroke-strong); background: #fff; color: var(--text); cursor: pointer; margin-left: 4px; }
+    .tb .act:hover { background: var(--bg-subtle); }
+    .tb .act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tb .act.primary:hover { background: var(--accent-hover); }
+    .tb .act kbd { font-family: inherit; font-size: 11px; opacity: 0.72; }
   </style>
 </head>
 <body>
@@ -29,11 +56,12 @@
   <div class="cross" id="cx"></div>
   <div class="cross" id="cy"></div>
   <div id="sel">
-    <span class="h" style="left:-4px;top:-4px"></span><span class="h" style="right:-4px;top:-4px"></span>
-    <span class="h" style="left:-4px;bottom:-4px"></span><span class="h" style="right:-4px;bottom:-4px"></span>
+    <span class="h" data-h="nw"></span><span class="h" data-h="n"></span><span class="h" data-h="ne"></span><span class="h" data-h="e"></span>
+    <span class="h" data-h="se"></span><span class="h" data-h="s"></span><span class="h" data-h="sw"></span><span class="h" data-h="w"></span>
   </div>
   <div id="size"></div>
-  <div id="hint">拖动鼠标框选　<b>Esc</b> 取消　<b>右键</b> 重选</div>
-  <script src="js/capture.js"></script>
+  <div id="hint"></div>
+  <div class="tb" id="toolbar" hidden></div>
+  <script type="module" src="js/capture/overlay.js"></script>
 </body>
 </html>
