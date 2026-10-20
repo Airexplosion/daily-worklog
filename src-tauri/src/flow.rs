@@ -80,14 +80,15 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
             Ok(f) => f,
             Err(e) => {
                 log::error!("{e}");
-                end_session(&state);
+                // 收起的小窗、主窗口都要回来，不能让没记完的那一条看不见
+                cancel(&app);
                 return;
             }
         };
         log::info!("capture: grab {} 块屏 {}ms", frozen.monitors.len(), t0.elapsed().as_millis());
         if let Err(e) = windows::ensure_overlays(&app, &frozen) {
             log::error!("创建框选窗口失败：{e}");
-            end_session(&state);
+            cancel(&app);
             return;
         }
         let taken_at = frozen.taken_at;
