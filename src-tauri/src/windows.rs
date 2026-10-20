@@ -58,10 +58,21 @@ pub fn ensure_overlays_for(app: &AppHandle, geometry: &[(i32, i32, u32, u32)]) -
             .visible(false)
             .focused(false)
             .build()?;
+        no_transitions(&w);
         place_physical(&w, x, y, width, height)?;
     }
     *current = geometry.to_vec();
     Ok(())
+}
+
+/// 关掉系统给窗口加的淡入淡出动画：截图画面、补一句小窗要一按就出、一取消就没（系统默认有约 150ms 渐变）
+pub fn no_transitions(w: &WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED};
+    let Ok(hwnd) = w.hwnd() else { return };
+    let on: i32 = 1;
+    unsafe {
+        DwmSetWindowAttribute(hwnd.0 as _, DWMWA_TRANSITIONS_FORCEDISABLED as u32, &on as *const i32 as *const _, 4);
+    }
 }
 
 /// 先移到目标屏再设尺寸：跨缩放比例的屏移动时系统会按新 DPI 改一次尺寸，所以尺寸放后面
@@ -117,7 +128,7 @@ pub const BAR_SIZE: (f64, f64) = (560.0, 64.0);
 /// 软件启动时建好补充框和提示窗，用的时候直接显示，省掉加载页面的时间
 pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
     if app.get_webview_window("note").is_none() {
-        WebviewWindowBuilder::new(app, "note", WebviewUrl::App("note.html".into()))
+        let w = WebviewWindowBuilder::new(app, "note", WebviewUrl::App("note.html".into()))
             .title("这一条在干啥？")
             .inner_size(NOTE_SIZE.0, NOTE_SIZE.1)
             .decorations(false)
@@ -128,9 +139,10 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .shadow(false)
             .visible(false)
             .build()?;
+        no_transitions(&w);
     }
     if app.get_webview_window("bar").is_none() {
-        WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("bar.html".into()))
+        let w = WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("bar.html".into()))
             .title("再截一张")
             .inner_size(BAR_SIZE.0, BAR_SIZE.1)
             .decorations(false)
@@ -144,6 +156,7 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .focusable(false)
             .visible(false)
             .build()?;
+        no_transitions(&w);
     }
     if app.get_webview_window("toast").is_none() {
         WebviewWindowBuilder::new(app, "toast", WebviewUrl::App("toast.html".into()))
