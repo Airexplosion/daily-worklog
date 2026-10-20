@@ -44,18 +44,50 @@ export function toast(message, action, ms = 5000) {
   toastTimer = window.setTimeout(() => el.remove(), ms);
 }
 
+/**
+ * 看大图。多张时两边有翻页按钮、底部写"2 / 3"，← → 键也能翻（到头不循环）；Esc 或点背景关闭
+ * @param {string[]} urls @param {number} [start]
+ */
+export function viewImages(urls, start = 0) {
+  const multi = urls.length > 1;
+  let i = Math.min(Math.max(start, 0), urls.length - 1);
+  const img = /** @type {HTMLImageElement} */ (h('img', { alt: '截图' }));
+  const prev = /** @type {HTMLButtonElement | null} */ (multi ? h('button', { class: 'nav-btn prev', title: '上一张（←）' }, '‹') : null);
+  const next = /** @type {HTMLButtonElement | null} */ (multi ? h('button', { class: 'nav-btn next', title: '下一张（→）' }, '›') : null);
+  const count = multi ? h('div', { class: 'count' }) : null;
+  const box = h('div', { class: `viewer${multi ? ' multi' : ''}` }, prev, img, next, count);
+  const show = () => {
+    img.src = urls[i];
+    if (count) count.textContent = `${i + 1} / ${urls.length}`;
+    if (prev) prev.disabled = i === 0;
+    if (next) next.disabled = i === urls.length - 1;
+  };
+  const step = (/** @type {number} */ d) => {
+    if (i + d < 0 || i + d >= urls.length) return;
+    i += d;
+    show();
+  };
+  const close = () => {
+    box.remove();
+    window.removeEventListener('keydown', onKey);
+  };
+  const onKey = (/** @type {KeyboardEvent} */ e) => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  };
+  prev?.addEventListener('click', () => step(-1));
+  next?.addEventListener('click', () => step(1));
+  // 一张时点哪儿都关；多张时点图不关（免得翻页时手滑）
+  box.addEventListener('click', (e) => { if (e.target === box || (!multi && e.target === img)) close(); });
+  window.addEventListener('keydown', onKey);
+  show();
+  document.body.append(box);
+}
+
 /** @param {string} url */
 export function viewImage(url) {
-  const close = () => box.remove();
-  const box = h('div', { class: 'viewer', onclick: close }, h('img', { src: url, alt: '截图' }));
-  const onKey = (/** @type {KeyboardEvent} */ e) => {
-    if (e.key === 'Escape') {
-      close();
-      window.removeEventListener('keydown', onKey);
-    }
-  };
-  window.addEventListener('keydown', onKey);
-  document.body.append(box);
+  viewImages([url]);
 }
 
 /**

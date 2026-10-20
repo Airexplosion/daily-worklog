@@ -90,6 +90,14 @@ html, body { height: 100%; background: var(--bg-window); overflow: hidden; }
 .badge.manual { background: #eeeeee; color: #555; }
 .thumb { width: 40px; height: 26px; object-fit: cover; border-radius: 3px; border: 1px solid var(--stroke); cursor: zoom-in; }
 .thumb.gone { display: inline-block; background: #f0f0f0; cursor: default; }
+.thumb-stack { position: relative; display: inline-block; width: 46px; height: 32px; flex-shrink: 0; cursor: zoom-in; }
+.thumb-stack .thumb { position: absolute; width: 40px; height: 26px; background: var(--bg-card); }
+.thumb-stack .back { left: 5px; top: 0; }
+.thumb-stack .front { left: 0; top: 5px; box-shadow: -1px 1px 3px rgba(0, 0, 0, .12); }
+.thumb-stack .cnt {
+  position: absolute; right: -3px; bottom: -3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 10px; line-height: 15px; text-align: center; box-shadow: 0 0 0 1.5px var(--bg-card);
+}
 .icon-btn {
   width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0;
   border-radius: var(--radius-control); background: transparent; color: var(--text-3);
@@ -133,6 +141,20 @@ kbd {
   z-index: 60; cursor: zoom-out; padding: 24px;
 }
 .viewer img { max-width: 100%; max-height: 100%; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); border-radius: 4px; background: #fff; }
+.viewer.multi { padding: 24px 80px 56px; }
+.viewer.multi img { cursor: default; }
+.viewer .nav-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 0; border-radius: 6px;
+  background: rgba(255, 255, 255, .14); color: #fff; font-size: 34px; line-height: 1; cursor: pointer;
+}
+.viewer .nav-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .26); }
+.viewer .nav-btn:disabled { opacity: .25; cursor: default; }
+.viewer .prev { left: 18px; }
+.viewer .next { right: 18px; }
+.viewer .count {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px;
+  background: rgba(255, 255, 255, .16); padding: 3px 12px; border-radius: 12px; font-variant-numeric: tabular-nums;
+}
 
 .popover { position: fixed; z-index: 40; background: var(--bg-card); border-radius: var(--radius-surface); box-shadow: var(--shadow-flyout); }
 .pop { padding: 12px 14px; width: 260px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }

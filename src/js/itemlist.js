@@ -3,7 +3,7 @@
 
 import { api } from './api.js';
 import { icons } from './icons.js';
-import { h, toast, viewImage, popover, errText } from './ui.js';
+import { h, toast, viewImages, popover, errText } from './ui.js';
 
 const MAX_TAGS = 3;
 const PLACEHOLDER = '（待补充）';
@@ -85,13 +85,7 @@ function row(item, n, opts) {
   }
   if (item.status === 'recognizing') side.append(h('span', { class: 'badge ai' }, '识别中…'));
   else side.append(h('span', { class: `badge ${item.source}` }, item.source === 'ai' ? 'AI' : '手动'));
-  if (item.shots.length) {
-    const url = api.shotUrl(item.shots[0]);
-    const img = h('img', { class: 'thumb', src: url, alt: '', title: '点击看大图', onclick: () => viewImage(url) });
-    // 截图超过保留天数会被清理，找不到时换成灰色占位
-    img.addEventListener('error', () => img.replaceWith(h('span', { class: 'thumb gone', title: '截图已清理' })));
-    side.append(img);
-  }
+  if (item.shots.length) side.append(thumbFor(item.shots.map(api.shotUrl)));
   side.append(h('button', {
     class: 'icon-btn del', title: '删除', html: icons.delete,
     onclick: () => remove(item),
@@ -235,4 +229,28 @@ function newTagMenu(anchor, name, all) {
       h('button', { class: 'btn small', onclick: () => select.value && act(api.renameTag(name, select.value)) }, '并入')) : null,
   );
   const close = popover(anchor, content);
+}
+
+/**
+ * 缩略图：一张就是一张；多张叠成一摞、右下角标张数。点开看大图，多张可以左右翻
+ * @param {string[]} urls
+ */
+function thumbFor(urls) {
+  // 截图超过保留天数会被清理，找不到时换成灰色占位
+  const gone = () => h('span', { class: 'thumb gone', title: '截图已清理' });
+  if (urls.length === 1) {
+    const img = h('img', { class: 'thumb', src: urls[0], alt: '', title: '点击看大图', onclick: () => viewImages(urls) });
+    img.addEventListener('error', () => img.replaceWith(gone()));
+    return img;
+  }
+  const back = h('img', { class: 'thumb back', src: urls[1], alt: '' });
+  const front = h('img', { class: 'thumb front', src: urls[0], alt: '' });
+  back.addEventListener('error', () => back.remove());
+  front.addEventListener('error', () => {
+    const g = gone();
+    g.classList.add('front');
+    front.replaceWith(g);
+  });
+  return h('span', { class: 'thumb-stack', title: `${urls.length} 张图，点击看大图`, onclick: () => viewImages(urls) },
+    back, front, h('span', { class: 'cnt' }, String(urls.length)));
 }
