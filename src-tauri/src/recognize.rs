@@ -216,6 +216,7 @@ fn apply_result(app: &AppHandle, job: &Job, raw: &str) {
             note: String::new(),
             message: String::new(),
             low_confidence: confidence < 0.5,
+            shots: 0,
         },
     );
 }
@@ -249,6 +250,7 @@ fn mark_pending(app: &AppHandle, job: &Job, reason: &str, toast_message: &str) {
             note,
             message: toast_message.to_string(),
             low_confidence: false,
+            shots: 0,
         },
     );
 }

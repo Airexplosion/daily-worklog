@@ -54,7 +54,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let app = app.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(250));
-                    crate::flow::start_capture(app);
+                    crate::flow::start_capture(app, crate::capture_mode::Origin::Tray);
                 });
             }
             "open" => {
@@ -95,7 +95,7 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
     match action {
         CloseAction::SkipNote => {
             std::thread::spawn(move || {
-                if crate::flow::commit_pending(&app, "").is_err() {
+                if crate::flow::commit_draft(&app, "").is_err() {
                     crate::flow::cancel(&app);
                 }
             });
@@ -133,6 +133,7 @@ fn first_close_tip(app: &AppHandle) {
                 note: String::new(),
                 message: "双击右下角托盘图标可以重新打开".into(),
                 low_confidence: false,
+                shots: 0,
             },
         );
     }
@@ -154,6 +155,7 @@ pub fn notify_hotkey_failed(app: AppHandle, hotkey: String) {
                 note: String::new(),
                 message: "可能被别的软件占用了，打开主窗口在设置里换一个".into(),
                 low_confidence: false,
+                shots: 0,
             },
         );
     });

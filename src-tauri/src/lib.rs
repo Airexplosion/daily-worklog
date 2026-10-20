@@ -49,6 +49,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
@@ -60,7 +61,7 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        flow::start_capture(app.clone());
+                        flow::start_capture(app.clone(), capture_mode::Origin::Hotkey);
                     }
                 })
                 .build(),
@@ -192,6 +193,7 @@ pub fn run() {
             commands::overlay_init,
             commands::overlay_ready,
             commands::capture_done,
+            commands::capture_pixels,
             commands::capture_cancel,
             commands::note_current,
             commands::note_submit,
@@ -211,7 +213,7 @@ pub fn run() {
             commands::confirm_tag,
             commands::rename_tag,
             commands::mute_today,
-            commands::capture_from_main,
+            commands::capture_start,
             commands::generate_summary,
             commands::save_summary,
             commands::undo_regenerate,

@@ -88,7 +88,7 @@ window.addEventListener('pointerup', (e) => {
   // 两个角分别换算，避免起点和宽度各自取整后终点差 1 像素
   const x1 = phys(rect.x), y1 = phys(rect.y);
   const x2 = phys(rect.x + rect.w), y2 = phys(rect.y + rect.h);
-  invoke('capture_done', { index, x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
+  invoke('capture_done', { index, x: x1, y: y1, w: x2 - x1, h: y2 - y1, action: 'record' })
     .catch((err) => {
       // 失败时恢复可操作，不能让框选画面卡住
       console.error(err);
@@ -125,7 +125,7 @@ function load(url) {
 current.listen('capture:start', (/** @type {{payload: {url: string}}} */ ev) => load(ev.payload.url));
 
 // 页面刚建好时可能错过了 capture:start，主动问一次
-invoke('overlay_init', { index }).then((url) => { if (url) load(/** @type {string} */ (url)); });
+invoke('overlay_init', { index }).then((info) => { if (info) load(/** @type {{url: string}} */ (info).url); });
 
 // 选完区域后，这块屏的框选窗口变成补充框背后的变暗背景（不再接收鼠标）
 current.listen('capture:backdrop', () => {

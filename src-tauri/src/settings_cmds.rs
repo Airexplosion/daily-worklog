@@ -256,7 +256,7 @@ pub async fn finish_onboarding(app: AppHandle, try_capture: bool) -> Result<(), 
         let app = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(400));
-            flow::start_capture(app);
+            flow::start_capture(app, crate::capture_mode::Origin::Onboarding);
         });
     } else {
         windows::show_main(&app);

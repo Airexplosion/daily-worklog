@@ -1,6 +1,8 @@
 //! 全局状态。
 
 use crate::capture::Frozen;
+use crate::capture_mode::{Action, LastRect, Origin};
+use crate::draft::Draft;
 use crate::holidays::Calendar;
 use crate::items::Trash;
 use crate::model::{Data, Settings};
@@ -10,19 +12,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
 
-/// 已经截好、等补充说明的那张图
-pub struct PendingShot {
-    pub id: String,
-    /// YYYY-MM-DD，按按下热键的时刻算
-    pub date: String,
-    pub created_at: String,
-    /// 相对数据目录的路径，如 shots/20261015-183012-a1b2.png
-    pub shot_rel: String,
-    pub monitor_index: usize,
-    /// 截图那块屏的 (x, y, 宽, 高, 缩放)，补充框放在这块屏上
-    pub monitor: (i32, i32, u32, u32, f64),
-    /// 补充框里显示的缩略图（JPEG）
-    pub thumb_jpeg: Vec<u8>,
+/// 这一次截图（框选中）：从哪儿开始的、回车做什么、要不要给升级提示
+pub struct Session {
+    pub origin: Origin,
+    pub primary: Action,
+    pub hint: Option<String>,
 }
 
 /// 要主窗口做的事。主窗口可能刚建、页面还没加载，所以先存着，页面来取
@@ -53,11 +47,15 @@ pub struct AppState {
     pub frozen: Mutex<Option<Frozen>>,
     /// 框选窗口对应的显示器几何（x, y, w, h），显示器变了就重建窗口
     pub overlay_geometry: Mutex<Vec<(i32, i32, u32, u32)>>,
-    /// 截图流程进行中（框选或补充框），再按热键无效
+    /// 正在框选（框选窗口开着），再按热键无效
     pub capturing: AtomicBool,
+    pub session: Mutex<Option<Session>>,
     /// 本次截图至少有一块框选画面已经显示
     pub overlay_shown: AtomicBool,
-    pub pending_shot: Mutex<Option<PendingShot>>,
+    /// 还没记完的这一条（补一句小窗开着或"再截一张"的小条挂着）
+    pub draft: Mutex<Option<Draft>>,
+    /// 上一张的选框，"再截一张"时摆回原位
+    pub last_rect: Mutex<Option<LastRect>>,
     /// 识别队列
     pub queue: Mutex<Option<UnboundedSender<Job>>>,
     /// 删除后 5 秒内可撤销的条目
@@ -81,7 +79,9 @@ impl AppState {
             overlay_geometry: Mutex::new(Vec::new()),
             capturing: AtomicBool::new(false),
             overlay_shown: AtomicBool::new(false),
-            pending_shot: Mutex::new(None),
+            session: Mutex::new(None),
+            draft: Mutex::new(None),
+            last_rect: Mutex::new(None),
             queue: Mutex::new(None),
             trash: Mutex::new(Trash::default()),
             status: Mutex::new(StartupStatus::default()),

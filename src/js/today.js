@@ -41,7 +41,7 @@ export function mountToday(host, shared) {
     toast('今天不再提醒');
     refresh();
   });
-  fab.addEventListener('click', () => api.captureFromMain());
+  fab.addEventListener('click', () => api.captureStart('main'));
   addBtn.addEventListener('click', openAdd);
   genBtn.addEventListener('click', () => {
     if (day) window.dispatchEvent(new CustomEvent('open-summary', { detail: day.date }));

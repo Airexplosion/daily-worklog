@@ -72,11 +72,6 @@ pub fn place_physical(w: &WebviewWindow, x: i32, y: i32, width: u32, height: u32
     Ok(())
 }
 
-#[derive(Clone, Serialize)]
-struct CaptureStart {
-    url: String,
-}
-
 /// 带上这块屏的物理宽度，页面用它换算缩放比例（比 devicePixelRatio 更可靠）
 pub fn frozen_url(frozen: &Frozen, index: usize) -> String {
     let width = frozen.monitors.iter().find(|m| m.index == index).map_or(0, |m| m.width);
@@ -85,9 +80,9 @@ pub fn frozen_url(frozen: &Frozen, index: usize) -> String {
 
 /// 通知每个框选窗口加载自己那块屏的定格画面；画面加载完页面会调用 overlay_ready。
 /// 刚建好、脚本还没跑起来的页面收不到这个通知，它启动时会用 overlay_init 自己来要
-pub fn start_overlays(app: &AppHandle, urls: Vec<(usize, String)>) {
-    for (index, url) in urls {
-        let _ = app.emit_to(overlay_label(index), "capture:start", CaptureStart { url });
+pub fn start_overlays<T: Serialize + Clone>(app: &AppHandle, infos: Vec<(usize, T)>) {
+    for (index, info) in infos {
+        let _ = app.emit_to(overlay_label(index), "capture:start", info);
     }
 }
 
@@ -114,7 +109,7 @@ pub fn keep_backdrop(app: &AppHandle, index: usize) {
 }
 
 /// 补充框、提示窗都是透明窗口，卡片四周留了画阴影的边距（逻辑像素）
-pub const NOTE_SIZE: (f64, f64) = (640.0, 214.0);
+pub const NOTE_SIZE: (f64, f64) = (660.0, 300.0);
 pub const TOAST_SIZE: (f64, f64) = (420.0, 150.0);
 pub const MAIN_SIZE: (f64, f64) = (900.0, 640.0);
 
@@ -155,10 +150,16 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteOpen {
-    /// 缩略图 data URL
-    pub thumb: String,
     /// 这会是今天第几条
     pub index: usize,
+    /// 各张图的地址（http://shot.localhost/文件名），按顺序
+    pub shots: Vec<String>,
+    /// 已经打的字
+    pub note: String,
+    /// 一条最多几张
+    pub max: usize,
+    /// 加图时的提示（多出来的没加、读不出来的文件）
+    pub message: Option<String>,
 }
 
 /// 补充框放在截图那块屏的中下部，并拿到焦点
@@ -185,7 +186,7 @@ pub fn hide_note(app: &AppHandle) {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToastPayload {
-    /// recognizing | done | failed
+    /// recognizing | done | failed | info | copied
     pub kind: String,
     pub id: String,
     pub index: usize,
@@ -195,6 +196,8 @@ pub struct ToastPayload {
     pub note: String,
     pub message: String,
     pub low_confidence: bool,
+    /// 这条有几张图（识别中提示用）
+    pub shots: usize,
 }
 
 /// 主屏右下角（避开任务栏），显示时不抢焦点

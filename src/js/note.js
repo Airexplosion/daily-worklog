@@ -9,12 +9,12 @@ const thumb = /** @type {HTMLElement} */ (document.getElementById('thumb'));
 const idx = /** @type {HTMLElement} */ (document.getElementById('idx'));
 let sending = false;
 
-/** @param {{thumb: string, index: number}} p */
+/** @param {{index: number, shots: string[], note: string, max: number, message: string | null}} p */
 function open(p) {
   sending = false;
-  thumb.style.backgroundImage = `url("${p.thumb}")`;
+  thumb.style.backgroundImage = `url("${p.shots[0] ?? ''}")`;
   idx.textContent = `今天第 ${p.index} 条`;
-  input.value = '';
+  input.value = p.note;
   focusInput();
 }
 

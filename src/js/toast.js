@@ -33,7 +33,7 @@ function esc(s) {
 
 /**
  * @param {{kind: string, id: string, index: number, text: string, tags: string[], newTags: string[],
- *          note: string, message: string, lowConfidence: boolean}} p
+ *          note: string, message: string, lowConfidence: boolean, shots: number}} p
  */
 function render(p) {
   currentId = p.id;
@@ -43,11 +43,12 @@ function render(p) {
   const tags = $('tags');
   $('low').hidden = !(p.kind === 'done' && p.lowConfidence);
   line1.className = 'ds';
+  line1.hidden = false;
   tags.innerHTML = '';
   if (p.kind === 'recognizing') {
     icon.className = 'spinner';
     icon.textContent = '';
-    title.textContent = `已记录第 ${p.index} 条 · AI 识别中…`;
+    title.textContent = `已记录第 ${p.index} 条${p.shots > 1 ? ` · ${p.shots} 张图` : ''} · AI 识别中…`;
     line1.className = 'ds muted';
     line1.textContent = p.note ? `你补的话：${p.note}` : '没补充说明，只用截图生成';
     scheduleHide(30000);
@@ -60,6 +61,14 @@ function render(p) {
       .map((t) => (p.newTags.includes(t) ? `<span class="tag new">新 · ${esc(t)}</span>` : `<span class="tag">${esc(t)}</span>`))
       .join('') + '<button class="link" id="edit">改一下</button>';
     scheduleHide(5000);
+  } else if (p.kind === 'copied') {
+    // 复制、另存：闪一下就走
+    icon.className = 'ok';
+    icon.textContent = '✓';
+    title.textContent = p.text;
+    line1.textContent = '';
+    line1.hidden = true;
+    scheduleHide(1500);
   } else if (p.kind === 'info') {
     icon.className = 'info';
     icon.textContent = 'i';

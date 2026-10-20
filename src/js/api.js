@@ -39,7 +39,8 @@ export const api = {
   /** @param {string} from @param {string} to */
   renameTag: (from, to) => invoke('rename_tag', { from, to }),
   muteToday: () => invoke('mute_today'),
-  captureFromMain: () => invoke('capture_from_main'),
+  /** @param {'main' | 'hotkey' | 'tray' | 'onboarding'} origin */
+  captureStart: (origin) => invoke('capture_start', { origin }),
   /** @param {string} rel shots/xxx.png @returns {string} */
   shotUrl: (rel) => `http://shot.localhost/${rel.split('/').pop()}`,
   listen,

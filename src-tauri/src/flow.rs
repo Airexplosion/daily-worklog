@@ -1,27 +1,75 @@
-//! 截图主流程：热键 → 定格 → 框选 → 裁剪存档 → 补充说明 → 落盘 → 后台识别。
+//! 截图主流程：热键 → 定格 → 框选（可标注）→ 复制 / 另存 / 记录进草稿 → 补充说明 → 落盘 → 后台识别。
 
-use crate::capture::{self, PhysRect};
-use crate::model::{now_iso, Item, ItemStatus, Source};
+use crate::capture::{self, Frozen, PhysRect};
+use crate::capture_mode::{self, Action, LastRect, Origin};
+use crate::draft::{Draft, MAX_SHOTS};
+use crate::model::{now_iso, EnterAction};
 use crate::recognize::{self, Job};
-use crate::state::{AppState, PendingShot};
+use crate::state::{AppState, Session};
 use crate::windows::{self, NoteOpen, ToastPayload};
-use base64::Engine;
+use image::RgbaImage;
+use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::DialogExt;
 
-/// 热键触发。截图流程进行中时再按无效；补充框开着时把它重新拿到前台
-pub fn start_capture(app: AppHandle) {
+/// 框选页面要的：定格画面、主按钮、第几张、上次的框、升级提示
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureInfo {
+    pub url: String,
+    pub primary: Action,
+    /// 有没记完的一条时是第几张（草稿张数 + 1），否则 1
+    pub shot_no: usize,
+    /// 物理像素；只在"加到这条"且同屏同几何时给
+    pub last_rect: Option<RectView>,
+    pub hint: Option<String>,
+}
+
+#[derive(Clone, Copy, Serialize)]
+pub struct RectView {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl From<PhysRect> for RectView {
+    fn from(r: PhysRect) -> Self {
+        RectView { x: r.x, y: r.y, w: r.w, h: r.h }
+    }
+}
+
+/// 热键、托盘、主窗口、引导都从这里开始。截图流程进行中时再按无效
+pub fn start_capture(app: AppHandle, origin: Origin) {
     let state = app.state::<AppState>();
     if state.capturing.swap(true, Ordering::SeqCst) {
-        if state.pending_shot.lock().unwrap().is_some() {
-            if let Some(w) = app.get_webview_window("note") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+        return;
+    }
+    let has_draft = state.draft.lock().unwrap().is_some();
+    if has_draft {
+        // 还没记完的一条：先把补一句小窗叫到前面
+        state.capturing.store(false, Ordering::SeqCst);
+        if let Some(w) = app.get_webview_window("note") {
+            let _ = w.show();
+            let _ = w.set_focus();
         }
         return;
     }
+    let session = {
+        let mut s = state.settings.lock().unwrap();
+        let hint = capture_mode::needs_upgrade_hint(&s).then(|| {
+            s.enter_action = Some(EnterAction::Copy);
+            if let Err(e) = state.store.save_settings(&s) {
+                log::error!("保存设置失败：{e}");
+            }
+            capture_mode::UPGRADE_HINT.to_string()
+        });
+        Session { origin, primary: capture_mode::primary(origin, has_draft, s.enter_action), hint }
+    };
+    *state.session.lock().unwrap() = Some(session);
     let toast_was_visible = app.get_webview_window("toast").and_then(|w| w.is_visible().ok()).unwrap_or(false);
     windows::hide_toast(&app);
     std::thread::spawn(move || {
@@ -35,27 +83,22 @@ pub fn start_capture(app: AppHandle) {
             Ok(f) => f,
             Err(e) => {
                 log::error!("{e}");
-                state.capturing.store(false, Ordering::SeqCst);
+                end_session(&state);
                 return;
             }
         };
         log::info!("capture: grab {} 块屏 {}ms", frozen.monitors.len(), t0.elapsed().as_millis());
         if let Err(e) = windows::ensure_overlays(&app, &frozen) {
             log::error!("创建框选窗口失败：{e}");
-            state.capturing.store(false, Ordering::SeqCst);
+            end_session(&state);
             return;
         }
         let taken_at = frozen.taken_at;
+        let infos: Vec<(usize, CaptureInfo)> =
+            frozen.monitors.iter().map(|m| (m.index, capture_info(&state, &frozen, m.index))).collect();
         *state.frozen.lock().unwrap() = Some(frozen);
         state.overlay_shown.store(false, Ordering::SeqCst);
-        let urls: Vec<(usize, String)> = state
-            .frozen
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|f| f.monitors.iter().map(|m| (m.index, windows::frozen_url(f, m.index))).collect())
-            .unwrap_or_default();
-        windows::start_overlays(&app, urls);
+        windows::start_overlays(&app, infos);
         // 兜底：5 秒内一块框选画面都没出来，就结束这次截图，免得后面的热键一直无效
         std::thread::sleep(std::time::Duration::from_secs(5));
         let same_capture = state.frozen.lock().unwrap().as_ref().is_some_and(|f| f.taken_at == taken_at);
@@ -66,11 +109,29 @@ pub fn start_capture(app: AppHandle) {
     });
 }
 
-/// 框选页面启动时调用：如果正在截图，返回这块屏的定格画面地址
-pub fn overlay_init(app: &AppHandle, index: usize) -> Option<String> {
+fn end_session(state: &AppState) {
+    *state.session.lock().unwrap() = None;
+    state.capturing.store(false, Ordering::SeqCst);
+}
+
+fn capture_info(state: &AppState, frozen: &Frozen, index: usize) -> CaptureInfo {
+    let (primary, hint) =
+        state.session.lock().unwrap().as_ref().map(|s| (s.primary, s.hint.clone())).unwrap_or((Action::Copy, None));
+    let shot_no = state.draft.lock().unwrap().as_ref().map_or(1, |d| d.shots.len() + 1);
+    let geometry = frozen.monitors.iter().find(|m| m.index == index).map(|m| (m.x, m.y, m.width, m.height));
+    let last_rect = match (primary, geometry) {
+        (Action::Add, Some(g)) => capture_mode::last_rect_for(state.last_rect.lock().unwrap().as_ref(), index, g).map(RectView::from),
+        _ => None,
+    };
+    CaptureInfo { url: windows::frozen_url(frozen, index), primary, shot_no, last_rect, hint }
+}
+
+/// 框选页面启动时调用：如果正在截图，返回这块屏的定格画面和主按钮等
+pub fn overlay_init(app: &AppHandle, index: usize) -> Option<CaptureInfo> {
     let state = app.state::<AppState>();
     let frozen = state.frozen.lock().unwrap();
-    frozen.as_ref().filter(|f| f.monitors.iter().any(|m| m.index == index)).map(|f| windows::frozen_url(f, index))
+    let f = frozen.as_ref().filter(|f| f.monitors.iter().any(|m| m.index == index))?;
+    Some(capture_info(&state, f, index))
 }
 
 /// 某块屏的定格画面加载好了：显示这块屏的框选窗口，鼠标所在的那块拿焦点
@@ -101,116 +162,232 @@ pub fn overlay_ready(app: &AppHandle, index: usize) {
     }
 }
 
+/// Esc、右键、关窗口、出错：结束这次截图
 pub fn cancel(app: &AppHandle) {
     let state = app.state::<AppState>();
     windows::hide_overlays(app);
-    windows::hide_note(app);
     *state.frozen.lock().unwrap() = None;
-    *state.pending_shot.lock().unwrap() = None;
-    state.capturing.store(false, Ordering::SeqCst);
+    end_session(&state);
     restore_main_if_needed(app);
 }
 
-/// 从主窗口点"截一张"的，截完或取消后把主窗口叫回来
+/// 从主窗口点"截一张"的，截完（或取消）把主窗口叫回来
 fn restore_main_if_needed(app: &AppHandle) {
     if app.state::<AppState>().restore_main.swap(false, Ordering::SeqCst) {
         windows::show_main(app);
     }
 }
 
-/// 框选完成：从原图裁剪，PNG 存档，准备好缩略图和发给 AI 的图
-pub fn finish_selection(app: &AppHandle, index: usize, rect: PhysRect) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let frozen = state.frozen.lock().unwrap().take().ok_or("截图已失效")?;
-    // 截图那块屏的框选窗口留着当补充框的变暗背景，其他屏的收起
-    windows::keep_backdrop(app, index);
-    let img = capture::crop(&frozen, index, rect).ok_or("选区不在屏幕内")?;
-    let local = frozen.taken_at;
-    let id = capture::shot_id(local.naive_local());
-    let shot_rel = format!("shots/{id}.png");
-    let path = state.store.dir().join(&shot_rel);
-    crate::storage::write_atomic(&path, &capture::png_bytes(&img)).map_err(|e| format!("保存截图失败：{e}"))?;
-    log::info!("capture: 屏 {index} 选区 {:?} → {}", rect, shot_rel);
-    let thumb = capture::thumbnail_fit(&img, 240, 150);
-    let m = frozen.monitors.iter().find(|m| m.index == index).ok_or("选区不在屏幕内")?;
-    let monitor = (m.x, m.y, m.width, m.height, m.scale);
-    let thumb_jpeg = capture::thumb_jpeg(&thumb);
-    let date = local.format("%Y-%m-%d").to_string();
-    let next_index = state.data.lock().unwrap().days.get(&date).map_or(0, |d| d.items.len()) + 1;
-    let thumb_url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&thumb_jpeg));
-    *state.pending_shot.lock().unwrap() = Some(PendingShot {
-        id,
-        date,
-        created_at: local.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
-        shot_rel,
-        monitor_index: index,
-        monitor,
-        thumb_jpeg,
-    });
-    windows::show_note(&app, monitor, NoteOpen { thumb: thumb_url, index: next_index });
-    Ok(())
+/// 没有标注：从定格原图裁剪
+pub fn finish_rect(app: &AppHandle, index: usize, rect: PhysRect, action: Action) -> Result<(), String> {
+    let img = {
+        let state = app.state::<AppState>();
+        let frozen = state.frozen.lock().unwrap();
+        let f = frozen.as_ref().ok_or("截图已失效")?;
+        capture::crop(f, index, rect).ok_or("选区不在屏幕内")?
+    };
+    finish(app, index, rect, img, action)
 }
 
-/// 补充框的内容（页面刚加载、错过 note:open 时用）
-pub fn note_current(app: &AppHandle) -> Option<NoteOpen> {
+/// 框选完：复制、另存、记录进草稿
+pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, action: Action) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let pending = state.pending_shot.lock().unwrap();
-    let shot = pending.as_ref()?;
-    let next_index = state.data.lock().unwrap().days.get(&shot.date).map_or(0, |d| d.items.len()) + 1;
+    let has_draft = state.draft.lock().unwrap().is_some();
+    let action = capture_mode::resolve(action, has_draft);
+    let frozen = state.frozen.lock().unwrap().take().ok_or("截图已失效")?;
+    *state.session.lock().unwrap() = None;
+    let m = frozen.monitors.iter().find(|m| m.index == index).ok_or("选区不在屏幕内")?;
+    let monitor = (m.x, m.y, m.width, m.height, m.scale);
+    log::info!("capture: 屏 {index} 选区 {:?} → {:?}", rect, action);
+    match action {
+        Action::Copy => {
+            windows::hide_overlays(app);
+            state.capturing.store(false, Ordering::SeqCst);
+            let (w, h) = img.dimensions();
+            app.clipboard()
+                .write_image(&tauri::image::Image::new_owned(img.into_raw(), w, h))
+                .map_err(|e| format!("复制失败：{e}"))?;
+            flash(app, "已复制");
+            restore_main_if_needed(app);
+            Ok(())
+        }
+        Action::Save => {
+            windows::hide_overlays(app);
+            state.capturing.store(false, Ordering::SeqCst);
+            let app = app.clone();
+            std::thread::spawn(move || {
+                save_as(&app, &img);
+                restore_main_if_needed(&app);
+            });
+            Ok(())
+        }
+        Action::Record => {
+            let taken_at = frozen.taken_at;
+            let id = capture::shot_id(taken_at.naive_local());
+            let rel = save_shot(&state, &id, &img)?;
+            let mut d = Draft::new(
+                &id,
+                &taken_at.format("%Y-%m-%d").to_string(),
+                &taken_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+                monitor,
+            );
+            d.add_shots(&[rel]);
+            if let Err(e) = state.store.save_draft(&d) {
+                log::error!("保存草稿失败：{e}");
+            }
+            *state.draft.lock().unwrap() = Some(d);
+            *state.last_rect.lock().unwrap() = Some(LastRect { index, monitor: (m.x, m.y, m.width, m.height), rect });
+            // 截图那块屏的框选窗口留着当补一句小窗的变暗背景，其他屏的收起
+            windows::keep_backdrop(app, index);
+            state.capturing.store(false, Ordering::SeqCst);
+            show_draft_note(app, true, None);
+            Ok(())
+        }
+        Action::Add => Err("没有正在记的这一条".into()),
+    }
+}
+
+/// 存档用的 PNG 原图，返回相对数据目录的路径
+fn save_shot(state: &AppState, id: &str, img: &RgbaImage) -> Result<String, String> {
+    let rel = format!("shots/{id}.png");
+    crate::storage::write_atomic(&state.store.dir().join(&rel), &capture::png_bytes(img))
+        .map_err(|e| format!("保存截图失败：{e}"))?;
+    Ok(rel)
+}
+
+/// 另存为：默认上次存的文件夹，第一次是"图片"文件夹
+fn save_as(app: &AppHandle, img: &RgbaImage) {
+    let state = app.state::<AppState>();
+    let last = state.settings.lock().unwrap().last_save_dir.clone();
+    let dir = last.map(std::path::PathBuf::from).filter(|p| p.is_dir()).or_else(|| app.path().picture_dir().ok());
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("另存为")
+        .set_file_name(capture_mode::save_file_name(chrono::Local::now().naive_local()))
+        .add_filter("PNG 图片", &["png"]);
+    if let Some(d) = dir {
+        dialog = dialog.set_directory(d);
+    }
+    let Some(picked) = dialog.blocking_save_file() else { return };
+    let Ok(mut path) = picked.into_path() else { return };
+    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
+        path.set_extension("png");
+    }
+    match std::fs::write(&path, capture::png_bytes(img)) {
+        Ok(()) => {
+            if let Some(parent) = path.parent() {
+                let mut s = state.settings.lock().unwrap();
+                s.last_save_dir = Some(parent.display().to_string());
+                if let Err(e) = state.store.save_settings(&s) {
+                    log::error!("保存设置失败：{e}");
+                }
+            }
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            flash(app, &format!("已保存到 {name}"));
+        }
+        Err(e) => {
+            log::error!("另存为失败：{e}");
+            flash(app, "保存失败，换个文件夹试试");
+        }
+    }
+}
+
+/// 右下角闪一下（约 1.5 秒）
+fn flash(app: &AppHandle, text: &str) {
+    windows::show_toast(
+        app,
+        ToastPayload {
+            kind: "copied".into(),
+            id: String::new(),
+            index: 0,
+            text: text.into(),
+            tags: Vec::new(),
+            new_tags: Vec::new(),
+            note: String::new(),
+            message: String::new(),
+            low_confidence: false,
+            shots: 0,
+        },
+    );
+}
+
+fn shot_url(rel: &str) -> String {
+    format!("http://shot.localhost/{}", rel.rsplit('/').next().unwrap_or(rel))
+}
+
+/// 补一句小窗的内容（页面刚加载、错过 note:open 时也用它）
+pub fn note_open(app: &AppHandle, message: Option<String>) -> Option<NoteOpen> {
+    let state = app.state::<AppState>();
+    let draft = state.draft.lock().unwrap();
+    let d = draft.as_ref()?;
+    let index = state.data.lock().unwrap().days.get(&d.date).map_or(0, |day| day.items.len()) + 1;
     Some(NoteOpen {
-        thumb: format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&shot.thumb_jpeg)),
-        index: next_index,
+        index,
+        shots: d.shots.iter().map(|r| shot_url(r)).collect(),
+        note: d.note.clone(),
+        max: MAX_SHOTS,
+        message,
     })
 }
 
-/// 回车或跳过：条目立刻落盘（识别中），补充框关掉，右下角提示，后台排队识别
-pub fn commit_pending(app: &AppHandle, note: &str) -> Result<(), String> {
+/// 显示补一句小窗。backdrop = 背后留着截图那块屏的变暗定格画面
+pub fn show_draft_note(app: &AppHandle, backdrop: bool, message: Option<String>) {
     let state = app.state::<AppState>();
-    let shot = state.pending_shot.lock().unwrap().take().ok_or("没有待记录的截图")?;
+    let Some(monitor) = state.draft.lock().unwrap().as_ref().map(|d| d.monitor) else { return };
+    let Some(open) = note_open(app, message) else { return };
+    if !backdrop {
+        windows::hide_overlays(app);
+    }
+    windows::show_note(app, monitor, open);
+}
+
+/// 回车或跳过：条目立刻落盘（识别中），补一句小窗关掉，右下角提示，后台排队识别
+pub fn commit_draft(app: &AppHandle, note: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut d = state.draft.lock().unwrap().take().ok_or("没有待记录的截图")?;
     windows::hide_note(app);
     windows::hide_overlays(app);
-    state.capturing.store(false, Ordering::SeqCst);
-    let item = Item {
-        id: shot.id.clone(),
-        created_at: shot.created_at.clone(),
-        text: String::new(),
-        note: note.trim().to_string(),
-        source: Source::Ai,
-        edited: false,
-        tags: Vec::new(),
-        confidence: None,
-        shots: vec![shot.shot_rel.clone()],
-        status: ItemStatus::Recognizing,
-        error: None,
-    };
+    d.note = note.to_string();
+    let date = d.date.clone();
+    let shots = d.shots.len();
+    let item = d.into_item();
+    let id = item.id.clone();
+    let note = item.note.clone();
     let index = {
         let mut data = state.data.lock().unwrap();
-        let day = data.days.entry(shot.date.clone()).or_default();
+        let day = data.days.entry(date.clone()).or_default();
         day.items.push(item);
         day.items_changed_at = Some(now_iso());
-        let index = day.items.len();
         // 存盘失败（比如被杀毒软件锁住）也照常排队识别，识别完会再存一次
         if let Err(e) = state.store.save_data(&data) {
             log::error!("保存失败：{e}");
         }
-        index
+        day_len(&data, &date)
     };
-    let _ = app.emit("items-changed", &shot.date);
+    // 条目存好以后再删草稿：中间断电，下次启动按 id 去重
+    state.store.clear_draft();
+    let _ = app.emit("items-changed", &date);
     windows::show_toast(
         app,
         ToastPayload {
             kind: "recognizing".into(),
-            id: shot.id.clone(),
+            id: id.clone(),
             index,
             text: String::new(),
             tags: Vec::new(),
             new_tags: Vec::new(),
-            note: note.trim().to_string(),
+            note,
             message: String::new(),
             low_confidence: false,
+            shots,
         },
     );
-    recognize::enqueue(app, Job { date: shot.date, id: shot.id });
+    recognize::enqueue(app, Job { date, id });
     restore_main_if_needed(app);
     Ok(())
+}
+
+fn day_len(data: &crate::model::Data, date: &str) -> usize {
+    data.days.get(date).map_or(0, |d| d.items.len())
 }

@@ -1,11 +1,12 @@
 //! 前端可调用的命令。
 
+use crate::capture_mode::{Action, Origin};
 use crate::flow;
 use crate::windows::{self, NoteOpen};
 use tauri::{AppHandle, Emitter};
 
 #[tauri::command]
-pub fn overlay_init(app: AppHandle, index: usize) -> Option<String> {
+pub fn overlay_init(app: AppHandle, index: usize) -> Option<flow::CaptureInfo> {
     flow::overlay_init(&app, index)
 }
 
@@ -14,16 +15,46 @@ pub fn overlay_ready(app: AppHandle, index: usize) {
     flow::overlay_ready(&app, index);
 }
 
+/// 没有标注：后端从定格原图裁剪
 #[tauri::command]
-pub async fn capture_done(app: AppHandle, index: usize, x: i64, y: i64, w: i64, h: i64) -> Result<(), String> {
+pub async fn capture_done(app: AppHandle, index: usize, x: i64, y: i64, w: i64, h: i64, action: Action) -> Result<(), String> {
     let result = crate::capture::clamp_rect(x, y, w, h)
         .ok_or_else(|| "选区不在屏幕内".to_string())
-        .and_then(|rect| flow::finish_selection(&app, index, rect));
+        .and_then(|rect| flow::finish_rect(&app, index, rect, action));
     if let Err(e) = &result {
         log::error!("截图失败：{e}");
         flow::cancel(&app);
     }
     result
+}
+
+/// 有标注：页面合成好的 RGBA 原始字节。头里带 x-index、x-x、x-y、x-width、x-height、x-action
+#[tauri::command]
+pub fn capture_pixels(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("没有收到图".into());
+    };
+    let headers = request.headers();
+    let text = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let num = |k: &str| text(k).and_then(|s| s.parse::<u32>().ok());
+    let (Some(index), Some(w), Some(h)) = (num("x-index"), num("x-width"), num("x-height")) else {
+        return Err("缺少图的尺寸".into());
+    };
+    let action: Action = text("x-action")
+        .and_then(|a| serde_json::from_value(serde_json::Value::String(a)).ok())
+        .ok_or("缺少要做的操作")?;
+    if w == 0 || h == 0 || bytes.len() != (w as usize) * (h as usize) * 4 {
+        return Err("图的大小不对".into());
+    }
+    let img = image::RgbaImage::from_raw(w, h, bytes.clone()).ok_or("图的大小不对")?;
+    let rect = crate::capture::PhysRect { x: num("x-x").unwrap_or(0), y: num("x-y").unwrap_or(0), w, h };
+    std::thread::spawn(move || {
+        if let Err(e) = flow::finish(&app, index as usize, rect, img, action) {
+            log::error!("截图失败：{e}");
+            flow::cancel(&app);
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -33,17 +64,17 @@ pub fn capture_cancel(app: AppHandle) {
 
 #[tauri::command]
 pub fn note_current(app: AppHandle) -> Option<NoteOpen> {
-    flow::note_current(&app)
+    flow::note_open(&app, None)
 }
 
 #[tauri::command]
 pub async fn note_submit(app: AppHandle, text: String) -> Result<(), String> {
-    flow::commit_pending(&app, &text)
+    flow::commit_draft(&app, &text)
 }
 
 #[tauri::command]
 pub async fn note_skip(app: AppHandle) -> Result<(), String> {
-    flow::commit_pending(&app, "")
+    flow::commit_draft(&app, "")
 }
 
 #[tauri::command]
@@ -269,16 +300,21 @@ pub fn mute_today(app: AppHandle) -> Result<(), String> {
     save(&state, &data)
 }
 
-/// 主窗口右下角的"截一张"：先把主窗口藏起来，免得截到它
+/// 网页里发起截图。主窗口右下角的"截一张"先把主窗口藏起来，免得截到它，截完再叫回来
 #[tauri::command]
-pub fn capture_from_main(app: AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.hide();
-    }
-    app.state::<AppState>().restore_main.store(true, std::sync::atomic::Ordering::SeqCst);
+pub fn capture_start(app: AppHandle, origin: Origin) {
+    let delay = if origin == Origin::Main {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.hide();
+        }
+        app.state::<AppState>().restore_main.store(true, std::sync::atomic::Ordering::SeqCst);
+        250
+    } else {
+        0
+    };
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        flow::start_capture(app);
+        std::thread::sleep(std::time::Duration::from_millis(delay));
+        flow::start_capture(app, origin);
     });
 }
 
