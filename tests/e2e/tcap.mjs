@@ -695,7 +695,15 @@ if (mode === 'note-typing-race') {
   note.close();
 }
 
-if (mode === 'second-screen') {
+/** 现在接着几块屏（双屏场景只有一块屏时跳过） */
+const screenCount = () => Number(execSync(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens.Count"`, { encoding: 'utf8' }).trim());
+const skipOneScreen = (name) => {
+  if (screenCount() >= 2) return false;
+  console.log(`跳过 ${name}：现在只接了一块屏`);
+  return true;
+};
+
+if (mode === 'second-screen' && !skipOneScreen('second-screen')) {
   const note = await recordOne();
   const first = draft().monitor;
   await inv(note, 'note_more');
@@ -709,7 +717,7 @@ if (mode === 'second-screen') {
   ov.close();
 }
 
-if (mode === 'focus-last-rect') {
+if (mode === 'focus-last-rect' && !skipOneScreen('focus-last-rect')) {
   const { ov: ov1 } = await capture('main');
   await inv(ov1, 'capture_done', { index: 1, x: 50, y: 50, w: 200, h: 150, action: 'record' });
   await sleep(600);

@@ -18,7 +18,7 @@ for m in ${@:-$ALL}; do
   sleep 5
   echo "=== $m"
   out=$(timeout 180 node tcap.mjs "$E" "$m" 2>&1)
-  echo "$out" | grep -E "PASS|FAIL|全部通过|项失败|Error|用了" | sed 's/^/  /'
+  echo "$out" | grep -E "PASS|FAIL|全部通过|项失败|Error|用了|跳过" | sed 's/^/  /'
   echo "$out" | grep -q "全部通过" || { BAD="$BAD $m"; echo "$out" | tail -4 | sed "s/^/  ! /"; cp data/logs/app.log "out/fail-$m.log" 2>/dev/null; }
   taskkill //IM DailyWorkLog.exe //F > /dev/null 2>&1
   sleep 1
