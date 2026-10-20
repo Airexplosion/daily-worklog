@@ -18,7 +18,8 @@ pub struct FrozenMonitor {
     pub width: u32,
     pub height: u32,
     pub scale: f64,
-    pub image: RgbaImage,
+    /// 共享：给页面编码定格画面时拿一份引用就放锁，不卡住显示框选窗口
+    pub image: std::sync::Arc<RgbaImage>,
 }
 
 pub struct Frozen {
@@ -56,7 +57,7 @@ pub fn grab_all() -> Result<Frozen, String> {
                         width: image.width(),
                         height: image.height(),
                         scale: m.scale_factor().unwrap_or(1.0) as f64,
-                        image,
+                        image: std::sync::Arc::new(image),
                     })
                 })
             })
@@ -103,7 +104,7 @@ pub fn crop(frozen: &Frozen, index: usize, rect: PhysRect) -> Option<RgbaImage> 
     }
     let w = rect.w.min(m.width - rect.x);
     let h = rect.h.min(m.height - rect.y);
-    Some(imageops::crop_imm(&m.image, rect.x, rect.y, w, h).to_image())
+    Some(imageops::crop_imm(m.image.as_ref(), rect.x, rect.y, w, h).to_image())
 }
 
 /// 32 位、从上到下的 BMP，给框选窗口当背景用（不压缩，最快）
@@ -260,7 +261,7 @@ mod tests {
         let (w, h) = img.dimensions();
         Frozen {
             taken_at: chrono::Local::now(),
-            monitors: vec![FrozenMonitor { index: 0, x: -2560, y: 0, width: w, height: h, scale: 1.5, image: img }],
+            monitors: vec![FrozenMonitor { index: 0, x: -2560, y: 0, width: w, height: h, scale: 1.5, image: std::sync::Arc::new(img) }],
         }
     }
 
@@ -294,7 +295,7 @@ mod tests {
 
     #[test]
     fn one_failed_monitor_does_not_abort() {
-        let ok = FrozenMonitor { index: 1, x: 0, y: 0, width: 2, height: 2, scale: 1.0, image: synthetic(2, 2) };
+        let ok = FrozenMonitor { index: 1, x: 0, y: 0, width: 2, height: 2, scale: 1.0, image: std::sync::Arc::new(synthetic(2, 2)) };
         let got = collect_monitors(vec![Err("屏 0 截不到".into()), Ok(ok)]).unwrap();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].index, 1);

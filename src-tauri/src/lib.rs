@@ -74,13 +74,12 @@ pub fn run() {
             std::thread::spawn(move || {
                 let t0 = std::time::Instant::now();
                 let state = app.state::<AppState>();
-                let bmp = {
+                // 只在锁里拿一份图的引用；编码在锁外做，免得卡住框选窗口显示（overlay_ready 要同一把锁）
+                let image = {
                     let frozen = state.frozen.lock().unwrap();
-                    frozen
-                        .as_ref()
-                        .and_then(|f| f.monitors.iter().find(|m| m.index == index))
-                        .map(|m| capture::to_bmp(&m.image))
+                    frozen.as_ref().and_then(|f| f.monitors.iter().find(|m| m.index == index)).map(|m| m.image.clone())
                 };
+                let bmp = image.map(|img| capture::to_bmp(&img));
                 let response = match bmp {
                     Some(body) => Response::builder()
                         .header("Content-Type", "image/bmp")
