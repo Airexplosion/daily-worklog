@@ -780,6 +780,20 @@ if (mode === 'guide-follows-setting') {
   check('设成回车记录后，说明里写的是回车记录', t.includes('按回车记') && !t.includes('按回车复制'), t.slice(t.indexOf('平时怎么用'), t.indexOf('平时怎么用') + 120));
 }
 
+if (mode === 'stray-click') {
+  const { ov } = await capture('hotkey');
+  await drag(ov, [200, 200], [600, 500]);
+  const before = await ov.eval(`document.querySelector('#size').textContent`);
+  await mouseAt(ov, 900, 700);
+  await sleep(200);
+  check('框外点一下（没拖）：选框还在', await shown(ov, '#sel') && await shown(ov, '#toolbar') && (await ov.eval(`document.querySelector('#size').textContent`)) === before,
+    await ov.eval(`document.querySelector('#size').textContent`));
+  await drag(ov, [700, 600], [900, 800]);
+  check('框外拖一下：照常重新框选', (await ov.eval(`document.querySelector('#size').textContent`)) === '300 × 300', await ov.eval(`document.querySelector('#size').textContent`));
+  await ov.key('Escape');
+  ov.close();
+}
+
 main.close();
 console.log(failures() ? `${failures()} 项失败` : '全部通过');
 process.exit(failures() ? 1 : 0);

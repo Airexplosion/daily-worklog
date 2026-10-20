@@ -59,7 +59,7 @@ const icon = (/** @type {string} */ body) =>
 let info = null;
 /** CSS 像素 @type {Rect | null} */
 let rect = null;
-/** @type {null | {kind: 'new', start: Point} | {kind: 'handle', handle: Handle, start: Point, orig: Rect}} */
+/** prev：开始重新框选前的选框，只是点了一下没拖开时还原 @type {null | {kind: 'new', start: Point, prev: Rect | null} | {kind: 'handle', handle: Handle, start: Point, orig: Rect}} */
 let drag = null;
 let busy = false;
 /** 画了标注以后选框固定 */
@@ -424,7 +424,7 @@ window.addEventListener('pointerdown', (e) => {
   } else if (rect && handle && locked) {
     return;
   } else if (!locked) {
-    drag = { kind: 'new', start: p };
+    drag = { kind: 'new', start: p, prev: rect };
     rect = { x: p.x, y: p.y, w: 0, h: 0 };
     toolbar.hidden = true;
     document.body.classList.remove('selected');
@@ -480,11 +480,18 @@ window.addEventListener('pointerup', (e) => {
     return;
   }
   if (!drag) return;
+  const prev = drag.kind === 'new' ? drag.prev : null;
   const wasNew = drag.kind === 'new';
   drag = null;
   document.body.classList.remove('dragging');
   if (wasNew && rect && (rect.w < 4 || rect.h < 4)) {
-    reset();
+    // 只是点了一下没拖开：原来框好的不扔
+    if (prev) {
+      rect = prev;
+      selected();
+    } else {
+      reset();
+    }
     return;
   }
   selected();
