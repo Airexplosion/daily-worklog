@@ -1,5 +1,6 @@
 //! 本地存储：原子写入、启动备份、损坏恢复、截图按天数清理。
 
+use crate::draft::Draft;
 use crate::model::{Data, Settings};
 use chrono::{Duration, Local, NaiveDate, NaiveDateTime};
 use std::fs;
@@ -134,6 +135,38 @@ impl Store {
 
     pub fn save_settings(&self, settings: &Settings) -> io::Result<()> {
         write_atomic(&self.settings_path(), &serde_json::to_vec_pretty(settings)?)
+    }
+
+    fn draft_path(&self) -> PathBuf {
+        self.dir.join("draft.json")
+    }
+
+    pub fn save_draft(&self, draft: &Draft) -> io::Result<()> {
+        write_atomic(&self.draft_path(), &serde_json::to_vec_pretty(draft)?)
+    }
+
+    /// 没有、读不出、坏了都当作没有草稿
+    pub fn load_draft(&self) -> Option<Draft> {
+        let bytes = match fs::read(self.draft_path()) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return None,
+            Err(e) => {
+                log_read_error(&self.draft_path(), &e);
+                return None;
+            }
+        };
+        let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
+        match serde_json::from_slice::<Draft>(body) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                log::warn!("draft.json 读不出来，当作没有：{e}");
+                None
+            }
+        }
+    }
+
+    pub fn clear_draft(&self) {
+        let _ = fs::remove_file(self.draft_path());
     }
 
     /// 先确认 data.json 能解析，再复制一份到 backups，最多留 7 份
@@ -434,5 +467,27 @@ mod tests {
         s.user_name = "某某".into();
         store.save_settings(&s).unwrap();
         assert_eq!(store.load_settings().user_name, "某某");
+    }
+
+    #[test]
+    fn draft_roundtrip_and_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        let mut d = crate::draft::Draft::new("x", "2026-10-19", "2026-10-19T10:00:00+08:00", (0, 0, 1920, 1080, 1.5));
+        d.add_shots(&["shots/x.png".to_string()]);
+        d.note = "字".into();
+        store.save_draft(&d).unwrap();
+        assert_eq!(store.load_draft(), Some(d));
+        store.clear_draft();
+        assert_eq!(store.load_draft(), None);
+        store.clear_draft();
+    }
+
+    #[test]
+    fn corrupt_draft_loads_as_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path().to_path_buf());
+        fs::write(dir.path().join("draft.json"), b"{").unwrap();
+        assert_eq!(store.load_draft(), None);
     }
 }

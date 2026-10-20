@@ -2,6 +2,7 @@ pub mod ai;
 pub mod capture;
 pub mod commands;
 pub mod config;
+pub mod draft;
 pub mod flow;
 pub mod format;
 pub mod holidays;
@@ -143,6 +144,7 @@ pub fn run() {
             }
             let worker = recognize::spawn_worker(app.handle().clone());
             *app.state::<AppState>().queue.lock().unwrap() = Some(worker);
+            recover_draft(app.handle());
             spawn_trash_sweeper(app.handle().clone());
             if let Err(e) = windows::create_aux_windows(app.handle()) {
                 log::error!("创建补充框/提示窗失败：{e}");
@@ -235,6 +237,37 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");
+}
+
+/// 上次没记完的一条（退出、崩溃、断电）：记成一条并排队识别
+fn recover_draft(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(d) = state.store.load_draft() else { return };
+    let date = d.date.clone();
+    let dir = state.store.dir().to_path_buf();
+    if let Some(item) = draft::recover(d, |rel| dir.join(rel).exists()) {
+        let id = item.id.clone();
+        let n = item.shots.len();
+        let added = {
+            let mut data = state.data.lock().unwrap();
+            let day = data.days.entry(date.clone()).or_default();
+            // 记下后、删草稿前断电：条目已经在了，不重复记
+            let fresh = !day.items.iter().any(|i| i.id == id);
+            if fresh {
+                day.items.push(item);
+                day.items_changed_at = Some(model::now_iso());
+                if let Err(e) = state.store.save_data(&data) {
+                    log::error!("保存失败：{e}");
+                }
+            }
+            fresh
+        };
+        if added {
+            log::info!("启动时把上次没记完的一条记下了（{n} 张图）");
+            recognize::enqueue(app, recognize::Job { date, id });
+        }
+    }
+    state.store.clear_draft();
 }
 
 /// 每秒检查一次：过了撤销期的删除，真正删掉截图文件
