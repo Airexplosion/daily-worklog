@@ -10,38 +10,62 @@
     .card {
       position: absolute; inset: 14px; background: var(--bg-content); border-radius: var(--radius-surface);
       box-shadow: 0 10px 28px rgba(0, 0, 0, .26), 0 0 0 1px rgba(0, 0, 0, .1);
-      padding: 14px 16px 12px; display: flex; flex-direction: column;
+      padding: 13px 16px 11px; display: flex; flex-direction: column; gap: 9px;
     }
-    .row { display: flex; gap: 14px; flex: 1; min-height: 0; }
-    .thumb {
-      width: 128px; height: 82px; border-radius: var(--radius-control); flex-shrink: 0;
-      background: var(--bg-card) center / contain no-repeat; border: 1px solid #e0e0e0;
-    }
-    .main { flex: 1; min-width: 0; }
-    .q { font-weight: 600; font-size: 14px; margin-bottom: 7px; display: flex; justify-content: space-between; }
+    .card.dropping { box-shadow: 0 10px 28px rgba(0, 0, 0, .26), 0 0 0 2px var(--accent); }
+    .q { font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: baseline; }
     .q span { font-weight: 400; color: var(--text-3); font-size: 12px; }
-    .guide {
-      display: inline-block; margin-top: 7px; font-size: 12px; color: var(--warn-text);
-      background: var(--warn-bg); border-radius: var(--radius-control); padding: 3px 9px;
+    .strip { display: flex; gap: 8px; align-items: stretch; height: 52px; }
+    .th {
+      position: relative; width: 78px; flex-shrink: 0; border-radius: var(--radius-control);
+      background: var(--bg-card) center / contain no-repeat; border: 1px solid #dcdcdc;
     }
-    .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-    .foot .later { font-size: 12px; color: var(--text-disabled); }
+    .th .n {
+      position: absolute; left: 3px; top: 3px; min-width: 15px; height: 15px; line-height: 15px; text-align: center;
+      font-size: 10px; color: #fff; background: rgba(0, 0, 0, .55); border-radius: 3px; padding: 0 3px;
+    }
+    .th .x {
+      position: absolute; right: -6px; top: -6px; width: 17px; height: 17px; border-radius: 50%; border: 0; padding: 0;
+      background: #5f5f5f; color: #fff; font-size: 12px; line-height: 17px; cursor: pointer;
+    }
+    .th .x:hover { background: var(--danger); }
+    .add {
+      display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 0 12px; flex-shrink: 0;
+      border: 1px dashed #b8b8b8; border-radius: var(--radius-control); background: var(--bg-card);
+      font: inherit; font-size: 12.5px; color: var(--accent); text-align: left; cursor: pointer;
+    }
+    .add:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-softer); }
+    .add i { font-style: normal; font-size: 11px; color: var(--text-3); }
+    .add:disabled { color: var(--text-disabled); cursor: default; }
+    .tips { min-height: 22px; }
+    .guide, .msg {
+      display: inline-block; font-size: 12px; border-radius: var(--radius-control); padding: 3px 9px;
+      color: var(--warn-text); background: var(--warn-bg);
+    }
+    .msg { color: var(--accent-pressed); background: var(--accent-soft); }
+    [hidden] { display: none !important; }
+    .foot { display: flex; justify-content: space-between; align-items: center; margin-top: auto; }
+    .foot .left { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-disabled); }
+    .foot .left .link { font-size: 12px; color: var(--text-2); }
+    .foot .left .link:hover { color: var(--danger); }
     .foot .btns { display: flex; gap: 8px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="row">
-      <div class="thumb" id="thumb"></div>
-      <div class="main">
-        <div class="q">这一条在干啥？<span id="idx"></span></div>
-        <input class="input" id="text" maxlength="200" autocomplete="off" spellcheck="false"
-               placeholder="一句话说清这是在干啥（可直接语音输入）">
-        <div class="guide">截图里没有的信息（人名、地点、原因）请补在这里</div>
-      </div>
+  <div class="card" id="card">
+    <div class="q">这一条在干啥？<span id="idx"></span></div>
+    <div class="strip" id="strip">
+      <button class="add" id="more" title="翻到下一屏再截，截好的图都算进这一条">＋ 再截一张<i>翻到下一屏再截</i></button>
+      <button class="add" id="pick" title="电脑里已有的图片">＋ 加图片…<i>也能 Ctrl+V / 拖进来</i></button>
+    </div>
+    <input class="input" id="text" maxlength="200" autocomplete="off" spellcheck="false"
+           placeholder="一句话说清这是在干啥（可直接语音输入）">
+    <div class="tips">
+      <span class="guide" id="guide">截图里没有的信息（人名、地点、原因）请补在这里</span>
+      <span class="msg" id="msg" hidden></span>
     </div>
     <div class="foot">
-      <span class="later">Win+H 可语音输入</span>
+      <span class="left"><button class="link" id="discard" title="这条的图删掉，什么都不记">不记了</button><span>Win+H 可语音输入</span></span>
       <span class="btns">
         <button class="btn" id="skip">跳过 <kbd>Esc</kbd></button>
         <button class="btn accent" id="ok">记录 <kbd>Enter</kbd></button>

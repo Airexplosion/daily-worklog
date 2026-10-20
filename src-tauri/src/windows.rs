@@ -109,7 +109,7 @@ pub fn keep_backdrop(app: &AppHandle, index: usize) {
 }
 
 /// 补充框、提示窗都是透明窗口，卡片四周留了画阴影的边距（逻辑像素）
-pub const NOTE_SIZE: (f64, f64) = (660.0, 300.0);
+pub const NOTE_SIZE: (f64, f64) = (660.0, 254.0);
 pub const TOAST_SIZE: (f64, f64) = (420.0, 150.0);
 pub const MAIN_SIZE: (f64, f64) = (900.0, 640.0);
 pub const BAR_SIZE: (f64, f64) = (560.0, 64.0);
