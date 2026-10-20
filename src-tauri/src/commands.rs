@@ -115,6 +115,12 @@ pub fn bar_current(app: AppHandle) -> Option<windows::BarView> {
 /// 拖进来的文件：按文件名排序，逐个读；认不出的计数。一张都没加成时返回提示
 #[tauri::command]
 pub async fn add_image_paths(app: AppHandle, paths: Vec<String>) -> Option<String> {
+    let started = flow::draft_id(&app);
+    import_paths(app, paths, started).await
+}
+
+/// 读文件、解码（可能好几秒），再交给 add_images；started 是开始时的草稿 id
+async fn import_paths(app: AppHandle, paths: Vec<String>, started: Option<String>) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut paths: Vec<std::path::PathBuf> = paths.into_iter().map(std::path::PathBuf::from).collect();
         crate::import::sort_paths(&mut paths);
@@ -126,7 +132,7 @@ pub async fn add_image_paths(app: AppHandle, paths: Vec<String>) -> Option<Strin
                 None => unreadable += 1,
             }
         }
-        flow::add_images(&app, imgs, unreadable)
+        flow::add_images(&app, imgs, unreadable, started.as_deref())
     })
     .await
     .ok()
@@ -137,6 +143,7 @@ pub async fn add_image_paths(app: AppHandle, paths: Vec<String>) -> Option<Strin
 #[tauri::command]
 pub async fn pick_images(app: AppHandle, window: tauri::WebviewWindow) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
+    let started = flow::draft_id(&app);
     let dialog = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
         dialog
@@ -151,7 +158,7 @@ pub async fn pick_images(app: AppHandle, window: tauri::WebviewWindow) -> Option
     .ok()
     .flatten()?;
     let paths = picked.into_iter().filter_map(|f| f.into_path().ok()).map(|p| p.display().to_string()).collect();
-    add_image_paths(app, paths).await
+    import_paths(app, paths, started).await
 }
 
 /// 粘贴的图片：body 是图片文件的字节
@@ -161,12 +168,13 @@ pub fn add_image_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resu
         return Err("没有收到图".into());
     };
     let bytes = bytes.clone();
+    let started = flow::draft_id(&app);
     std::thread::spawn(move || {
         let (imgs, unreadable) = match crate::import::decode(&bytes) {
             Some(img) => (vec![img], 0),
             None => (Vec::new(), 1),
         };
-        if let Some(msg) = flow::add_images(&app, imgs, unreadable) {
+        if let Some(msg) = flow::add_images(&app, imgs, unreadable, started.as_deref()) {
             log::warn!("粘贴的图没加：{msg}");
         }
     });

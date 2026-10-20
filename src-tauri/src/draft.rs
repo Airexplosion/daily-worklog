@@ -72,6 +72,27 @@ impl Draft {
     }
 }
 
+/// 加图（要读文件、解码，可能好几秒）结束时，这些图该去哪儿
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportTarget {
+    /// 新建一条
+    New,
+    /// 加进现在这条
+    Existing,
+    /// 开始加图时的那条已经记下或不记了：这些图不加
+    Gone,
+}
+
+/// started = 开始加图时的草稿 id，now = 加完时的草稿 id
+pub fn import_target(started: Option<&str>, now: Option<&str>) -> ImportTarget {
+    match (started, now) {
+        (None, None) => ImportTarget::New,
+        (None, Some(_)) => ImportTarget::Existing,
+        (Some(a), Some(b)) if a == b => ImportTarget::Existing,
+        (Some(_), _) => ImportTarget::Gone,
+    }
+}
+
 /// 启动恢复：去掉已经不存在的图；一张都不剩就不记
 pub fn recover(mut draft: Draft, exists: impl Fn(&str) -> bool) -> Option<Item> {
     draft.shots.retain(|rel| exists(rel));
@@ -142,5 +163,15 @@ mod tests {
         let item = recover(d.clone(), |rel| rel != "shots/b.png").unwrap();
         assert_eq!(item.shots, rels(&["a", "c"]));
         assert_eq!(recover(d, |_| false), None);
+    }
+
+    #[test]
+    fn import_target_follows_the_draft_seen_at_start() {
+        assert_eq!(import_target(None, None), ImportTarget::New);
+        assert_eq!(import_target(None, Some("b")), ImportTarget::Existing);
+        assert_eq!(import_target(Some("a"), Some("a")), ImportTarget::Existing);
+        // 加图途中那一条已经记下或不记了：这些图不能变成新的一条
+        assert_eq!(import_target(Some("a"), None), ImportTarget::Gone);
+        assert_eq!(import_target(Some("a"), Some("b")), ImportTarget::Gone);
     }
 }

@@ -232,17 +232,22 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
             let taken_at = frozen.taken_at;
             let id = capture::shot_id(taken_at.naive_local());
             let rel = save_shot(&state, &id, &img)?;
-            let mut d = Draft::new(
-                &id,
-                &taken_at.format("%Y-%m-%d").to_string(),
-                &taken_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
-                monitor,
-            );
-            d.add_shots(&[rel]);
-            if let Err(e) = state.store.save_draft(&d) {
-                log::error!("保存草稿失败：{e}");
+            {
+                // 同一把锁里判断和写入：截图期间别处（比如加图）刚建了草稿，就加进去，不覆盖
+                let mut draft = state.draft.lock().unwrap();
+                let d = draft.get_or_insert_with(|| {
+                    Draft::new(
+                        &id,
+                        &taken_at.format("%Y-%m-%d").to_string(),
+                        &taken_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
+                        monitor,
+                    )
+                });
+                d.add_shots(&[rel]);
+                if let Err(e) = state.store.save_draft(d) {
+                    log::error!("保存草稿失败：{e}");
+                }
             }
-            *state.draft.lock().unwrap() = Some(d);
             *state.last_rect.lock().unwrap() = Some(LastRect { index, monitor: (m.x, m.y, m.width, m.height), rect });
             // 截图那块屏的框选窗口留着当补一句小窗的变暗背景，其他屏的收起
             windows::keep_backdrop(app, index);
@@ -502,11 +507,21 @@ pub fn discard_draft(app: &AppHandle) {
     restore_main_if_needed(app);
 }
 
+/// 现在这条草稿的 id（加图开始时记下，加完时用来判断那条还在不在）
+pub fn draft_id(app: &AppHandle) -> Option<String> {
+    app.state::<AppState>().draft.lock().unwrap().as_ref().map(|d| d.id.clone())
+}
+
 /// 电脑里已有的图：有没记完的一条就加进去（收起小条、把小窗叫到前面）；没有就新建一条，
-/// 日期按现在，补一句小窗放在主窗口那块屏，背后不变暗。一张都没加成时返回给调用方的提示
-pub fn add_images(app: &AppHandle, imgs: Vec<RgbaImage>, unreadable: usize) -> Option<String> {
+/// 日期按现在，补一句小窗放在主窗口那块屏，背后不变暗。一张都没加成时返回给调用方的提示。
+/// started = 开始加图时的草稿 id：加图途中那条已经记下或不记了，这些图就不加
+pub fn add_images(app: &AppHandle, imgs: Vec<RgbaImage>, unreadable: usize, started: Option<&str>) -> Option<String> {
     let state = app.state::<AppState>();
     let now = chrono::Local::now();
+    if crate::draft::import_target(started, draft_id(app).as_deref()) == crate::draft::ImportTarget::Gone {
+        log::info!("加图途中那一条已经记下或不记了，{} 张图没加", imgs.len());
+        return Some("那一条已经记下了，这几张图没加".into());
+    }
     let room = state.draft.lock().unwrap().as_ref().map_or(MAX_SHOTS, |d| MAX_SHOTS.saturating_sub(d.shots.len()));
     let over = imgs.len().saturating_sub(room);
     let mut rels = Vec::new();
@@ -536,6 +551,10 @@ pub fn add_images(app: &AppHandle, imgs: Vec<RgbaImage>, unreadable: usize) -> O
         }
     }
     log::info!("加了 {} 张已有的图", rels.len());
+    // 正在框选：窗口一个都不动，截图结束后（after_capture）会把补一句小窗叫出来
+    if state.capturing.load(Ordering::SeqCst) {
+        return None;
+    }
     windows::hide_bar(app);
     show_draft_note(app, false, message);
     None
