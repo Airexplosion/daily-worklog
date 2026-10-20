@@ -5,12 +5,15 @@
 
 import { toPhys, fromPhys, normalize, hitHandle, resizeRect, moveRect, toolbarPos } from './geometry.js';
 import { keyAction } from './keys.js';
+import { COLORS, FONT_SIZES, drawShape, fontFor, loadStyle, saveStyle } from './shapes.js';
 
 /** @typedef {import('./geometry.js').Rect} Rect */
 /** @typedef {import('./geometry.js').Point} Point */
 /** @typedef {import('./geometry.js').Handle} Handle */
 /** @typedef {'copy' | 'record' | 'add'} Primary */
 /** @typedef {{url: string, primary: Primary, shotNo: number, lastRect: Rect | null, hint: string | null}} CaptureInfo */
+/** @typedef {import('./shapes.js').Shape} Shape */
+/** @typedef {import('./shapes.js').Tool} Tool */
 
 const { invoke } = window.__TAURI__.core;
 const current = window.__TAURI__.webviewWindow.getCurrentWebviewWindow();
@@ -24,6 +27,21 @@ const cx = $('cx');
 const cy = $('cy');
 const hint = $('hint');
 const toolbar = $('toolbar');
+const styleRow = $('style');
+const paint = /** @type {HTMLCanvasElement} */ ($('paint'));
+const textin = /** @type {HTMLInputElement} */ ($('textin'));
+// 读定格画面的像素（马赛克、合成）需要跨源许可，必须在设置 src 之前
+bg.crossOrigin = 'anonymous';
+
+/** 本机存储不能用时（隐私模式等）也照常工作，只是不记颜色粗细 */
+const storage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => {} };
+  }
+})();
+let style = loadStyle(storage);
 
 const TOOL_ICONS = {
   rect: '<rect x="3.5" y="5.5" width="13" height="9" rx="1"/>',
@@ -44,8 +62,19 @@ let rect = null;
 /** @type {null | {kind: 'new', start: Point} | {kind: 'handle', handle: Handle, start: Point, orig: Rect}} */
 let drag = null;
 let busy = false;
-/** 画了标注以后选框固定（Task 6 置位） */
+/** 画了标注以后选框固定 */
 let locked = false;
+/** 当前标注工具 @type {Tool | null} */
+let tool = null;
+/** 已画的标注（选区内物理像素） @type {Shape[]} */
+let shapes = [];
+/** 正在画的那一笔 @type {Shape | null} */
+let drawing = null;
+/** 文字工具：正在打字的位置（选区内物理像素） @type {{x: number, y: number} | null} */
+let textAt = null;
+let bgReady = false;
+// 测试只读
+Object.defineProperty(window, '__shapes', { get: () => shapes.slice() });
 
 /** 这块屏的物理宽度（定格画面地址里带的 w），换算比例比 devicePixelRatio 更可靠 */
 let physWidth = 0;
@@ -81,6 +110,7 @@ function buildToolbar() {
     ? [['save', '保存…', 'Ctrl+S'], ['record', '记录', 'Tab'], ['copy', '复制', 'Enter']]
     : [['save', '保存…', 'Ctrl+S'], ['copy', '复制', 'Ctrl+C'],
       primary === 'add' ? ['add', `加到这条（第 ${info?.shotNo ?? 2} 张）`, 'Enter'] : ['record', '记录', 'Enter']];
+  // 定格画面还没加载好时也能选工具、能画：画的先记着，画面一到就显示；导出时会等画面
   const tools = Object.entries(TOOL_ICONS)
     .map(([k, body]) => `<button class="i" data-tool="${k}" title="${TOOL_NAMES[/** @type {keyof TOOL_NAMES} */ (k)]}">${icon(body)}</button>`)
     .join('');
@@ -105,6 +135,32 @@ function draw() {
   const above = rect.y >= 26;
   size.style.left = `${rect.x}px`;
   size.style.top = above ? `${rect.y - 24}px` : `${rect.y + 4}px`;
+  render();
+}
+
+/** 选区内的物理像素坐标 @param {Point} p @returns {[number, number]} */
+function rel(p) {
+  if (!rect) return [0, 0];
+  const s = scale();
+  const r = toPhys(rect, s);
+  return [Math.min(Math.max(p.x * s - r.x, 0), r.w), Math.min(Math.max(p.y * s - r.y, 0), r.h)];
+}
+
+/** 画布盖在选框上：先画定格画面这一块，再按顺序画标注。没有标注时不显示（背景本来就一样） */
+function render() {
+  if (!rect || !bgReady || (!shapes.length && !drawing)) {
+    paint.style.display = 'none';
+    return;
+  }
+  const s = scale();
+  const r = toPhys(rect, s);
+  if (paint.width !== r.w) paint.width = r.w;
+  if (paint.height !== r.h) paint.height = r.h;
+  Object.assign(paint.style, { display: 'block', left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` });
+  const ctx = /** @type {CanvasRenderingContext2D} */ (paint.getContext('2d', { willReadFrequently: true }));
+  ctx.drawImage(bg, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  for (const sh of shapes) drawShape(ctx, sh, s);
+  if (drawing) drawShape(ctx, drawing, s);
 }
 
 function placeToolbar() {
@@ -113,6 +169,77 @@ function placeToolbar() {
   const pos = toolbarPos(rect, { w: toolbar.offsetWidth, h: toolbar.offsetHeight }, view());
   toolbar.style.left = `${pos.x}px`;
   toolbar.style.top = `${pos.y}px`;
+  placeStyleRow(pos.place === 'above');
+}
+
+/** 颜色、粗细这一行：跟着工具栏，工具栏在选框上方时它在工具栏上面 @param {boolean} [up] */
+function placeStyleRow(up = toolbar.offsetTop < (rect?.y ?? 0)) {
+  if (!tool || toolbar.hidden) {
+    styleRow.hidden = true;
+    return;
+  }
+  const st = style[tool];
+  const titles = tool === 'mosaic' ? ['小格', '中格', '大格'] : tool === 'text' ? ['小字', '中字', '大字'] : ['细', '中', '粗'];
+  const colors = tool === 'mosaic' ? ''
+    : COLORS.map((c) => `<button class="dot${c === st.color ? ' on' : ''}" data-color="${c}" style="background:${c}" title="颜色"></button>`).join('') + '<span class="sep"></span>';
+  const sizes = [0, 1, 2]
+    .map((i) => `<button class="sz${i === st.size ? ' on' : ''}" data-size="${i}" title="${titles[i]}"><span style="width:${[4, 7, 11][i]}px;height:${[4, 7, 11][i]}px"></span></button>`)
+    .join('');
+  styleRow.innerHTML = colors + sizes;
+  styleRow.hidden = false;
+  styleRow.style.left = `${toolbar.offsetLeft}px`;
+  styleRow.style.top = up ? `${toolbar.offsetTop - styleRow.offsetHeight - 6}px` : `${toolbar.offsetTop + toolbar.offsetHeight + 6}px`;
+}
+
+/** @param {Tool | null} next */
+function pickTool(next) {
+  commitText();
+  tool = next;
+  toolbar.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('on', /** @type {HTMLElement} */ (b).dataset.tool === tool));
+  document.body.classList.toggle('tool', !!tool);
+  placeStyleRow();
+}
+
+/** 画了第一笔以后选框固定；全部撤销后又能调 */
+function setLocked(on) {
+  locked = on;
+  document.body.classList.toggle('locked', on);
+}
+
+/** 文字工具：在点的地方就地打字 @param {Point} p */
+function startText(p) {
+  if (!tool) return;
+  const [x, y] = rel(p);
+  textAt = { x, y };
+  const st = style[tool];
+  Object.assign(textin.style, { display: 'block', left: `${p.x}px`, top: `${p.y}px`, color: st.color, font: fontFor(FONT_SIZES[st.size]) });
+  textin.value = '';
+  setTimeout(() => textin.focus());
+}
+
+function commitText() {
+  if (!textAt) return;
+  const text = textin.value.trim();
+  if (text) {
+    const st = style.text;
+    shapes.push({ tool: 'text', color: st.color, size: st.size, x1: textAt.x, y1: textAt.y, x2: textAt.x, y2: textAt.y, text });
+    setLocked(true);
+  }
+  textAt = null;
+  textin.style.display = 'none';
+  textin.blur();
+  render();
+}
+
+function undo() {
+  if (textAt) {
+    textAt = null;
+    textin.style.display = 'none';
+    return;
+  }
+  shapes.pop();
+  if (!shapes.length) setLocked(false);
+  render();
 }
 
 /** 选好了：出拖动点和工具栏 */
@@ -128,10 +255,18 @@ function reset() {
   drag = null;
   busy = false;
   locked = false;
+  shapes = [];
+  drawing = null;
+  textAt = null;
+  tool = null;
   sel.style.display = 'none';
   size.style.display = 'none';
+  paint.style.display = 'none';
+  textin.style.display = 'none';
   toolbar.hidden = true;
-  document.body.classList.remove('selecting', 'selected', 'dragging', 'locked');
+  styleRow.hidden = true;
+  toolbar.querySelectorAll('[data-tool]').forEach((b) => b.classList.remove('on'));
+  document.body.classList.remove('selecting', 'selected', 'dragging', 'locked', 'tool');
   setHint();
 }
 
@@ -148,11 +283,34 @@ async function act(name) {
     invoke('capture_cancel');
     return;
   }
-  if (name === 'undo' || !rect) return;
+  if (name === 'undo') {
+    undo();
+    return;
+  }
+  if (!rect) return;
+  commitText();
   const action = name === 'primary' ? info?.primary ?? 'copy' : name;
+  const r = toPhys(rect, scale());
   busy = true;
   try {
-    await invoke('capture_done', { index, ...toPhys(rect, scale()), action });
+    // 定格画面读不出来时（极少见）只能不带标注，至少截图是对的
+    const base = shapes.length ? await bg.decode().then(() => true, () => false) : false;
+    if (base) {
+      // 有标注：在画布上按物理像素合成，把 RGBA 原始字节交给后端
+      bgReady = true;
+      render();
+      const ctx = /** @type {CanvasRenderingContext2D} */ (paint.getContext('2d', { willReadFrequently: true }));
+      const pixels = ctx.getImageData(0, 0, r.w, r.h).data;
+      await invoke('capture_pixels', new Uint8Array(pixels.buffer), {
+        headers: {
+          'x-index': String(index), 'x-x': String(r.x), 'x-y': String(r.y),
+          'x-width': String(r.w), 'x-height': String(r.h), 'x-action': action,
+        },
+      });
+    } else {
+      // 没有标注：后端从定格原图裁剪，最快也最准
+      await invoke('capture_done', { index, ...r, action });
+    }
   } catch (err) {
     // 失败时恢复可操作，不能让框选画面卡住
     console.error(err);
@@ -160,16 +318,71 @@ async function act(name) {
   }
 }
 
-toolbar.addEventListener('pointerdown', (e) => e.stopPropagation());
+for (const el of [toolbar, styleRow, textin]) {
+  el.addEventListener('pointerdown', (e) => e.stopPropagation());
+  el.addEventListener('dblclick', (e) => e.stopPropagation());
+}
 toolbar.addEventListener('click', (e) => {
-  const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-act]'));
-  if (btn?.dataset.act) act(btn.dataset.act);
+  const target = /** @type {HTMLElement} */ (e.target);
+  const btn = /** @type {HTMLButtonElement | null} */ (target.closest('[data-act], [data-tool]'));
+  if (!btn || btn.disabled) return;
+  if (btn.dataset.tool) {
+    const t = /** @type {Tool} */ (btn.dataset.tool);
+    pickTool(tool === t ? null : t);
+  } else if (btn.dataset.act) {
+    act(btn.dataset.act);
+  }
 });
+styleRow.addEventListener('click', (e) => {
+  const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-color], [data-size]'));
+  if (!btn || !tool) return;
+  if (btn.dataset.color) style[tool].color = btn.dataset.color;
+  if (btn.dataset.size) style[tool].size = Number(btn.dataset.size);
+  saveStyle(storage, style);
+  placeStyleRow();
+  if (textAt) {
+    Object.assign(textin.style, { color: style.text.color, font: fontFor(FONT_SIZES[style.text.size]) });
+    textin.focus();
+  }
+});
+
+textin.addEventListener('keydown', (e) => {
+  // 自己处理，不往上冒：免得结束打字的这下回车又被当成"复制/记录"
+  e.stopPropagation();
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitText();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    textAt = null;
+    textin.style.display = 'none';
+  }
+});
+textin.addEventListener('blur', () => commitText());
 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || busy) return;
   const p = clampPoint(e);
   const handle = rect ? hitHandle(rect, p) : null;
+  const inside = !!rect && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+  if (rect && tool && inside && (locked || handle === 'move')) {
+    // 选了工具：在选框里按下就画（选框固定以后，边上也能画）
+    if (textAt) {
+      commitText();
+      return;
+    }
+    if (tool === 'text') {
+      startText(p);
+      return;
+    }
+    const st = style[tool];
+    const [x, y] = rel(p);
+    drawing = { tool, color: st.color, size: st.size, x1: x, y1: y, x2: x, y2: y, points: tool === 'pen' ? [[x, y]] : undefined };
+    setLocked(true);
+    /** @type {HTMLElement} */ (document.documentElement).setPointerCapture?.(e.pointerId);
+    return;
+  }
   if (rect && handle && !locked) {
     drag = { kind: 'handle', handle, start: p, orig: rect };
   } else if (rect && handle && locked) {
@@ -188,6 +401,20 @@ window.addEventListener('pointerdown', (e) => {
 
 window.addEventListener('pointermove', (e) => {
   moveCross(e);
+  if (drawing) {
+    let [x, y] = rel(clampPoint(e));
+    if (drawing.tool === 'ellipse' && e.shiftKey) {
+      // 按住 Shift 是正圆
+      const d = Math.max(Math.abs(x - drawing.x1), Math.abs(y - drawing.y1));
+      x = drawing.x1 + Math.sign(x - drawing.x1 || 1) * d;
+      y = drawing.y1 + Math.sign(y - drawing.y1 || 1) * d;
+    }
+    drawing.x2 = x;
+    drawing.y2 = y;
+    drawing.points?.push([x, y]);
+    render();
+    return;
+  }
   if (!drag) {
     if (rect && !locked) {
       const h = hitHandle(rect, clampPoint(e));
@@ -206,7 +433,17 @@ window.addEventListener('pointermove', (e) => {
 });
 
 window.addEventListener('pointerup', (e) => {
-  if (e.button !== 0 || !drag) return;
+  if (e.button !== 0) return;
+  if (drawing) {
+    const d = drawing;
+    drawing = null;
+    // 点一下没拖开的不算（画笔除外）
+    if (d.tool === 'pen' || Math.abs(d.x2 - d.x1) > 2 || Math.abs(d.y2 - d.y1) > 2) shapes.push(d);
+    if (!shapes.length) setLocked(false);
+    render();
+    return;
+  }
+  if (!drag) return;
   const wasNew = drag.kind === 'new';
   drag = null;
   document.body.classList.remove('dragging');
@@ -218,7 +455,7 @@ window.addEventListener('pointerup', (e) => {
 });
 
 window.addEventListener('dblclick', (e) => {
-  if (!rect || busy) return;
+  if (!rect || busy || tool) return;
   const p = clampPoint(e);
   if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) act('primary');
 });
@@ -231,7 +468,7 @@ window.addEventListener('contextmenu', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  const name = keyAction(e, { hasRect: !!rect && !drag, editingText: false });
+  const name = keyAction(e, { hasRect: !!rect && !drag && !drawing, editingText: !!textAt });
   if (!name) return;
   e.preventDefault();
   act(name);
@@ -247,9 +484,15 @@ function load(next) {
   reset();
   document.body.classList.remove('backdrop');
   physWidth = Number(new URL(next.url).searchParams.get('w')) || 0;
+  bgReady = false;
+  style = loadStyle(storage);
   buildToolbar();
   bg.classList.remove('ready');
-  bg.onload = () => bg.classList.add('ready');
+  bg.onload = () => {
+    bg.classList.add('ready');
+    bgReady = true;
+    render();
+  };
   bg.src = next.url;
   // 再截一张：上一张的框摆回原位，直接回车就截同一块
   if (next.lastRect) {

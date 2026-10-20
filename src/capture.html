@@ -48,11 +48,26 @@
     .tb .act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .tb .act.primary:hover { background: var(--accent-hover); }
     .tb .act kbd { font-family: inherit; font-size: 11px; opacity: 0.72; }
+
+    /* 颜色、粗细 */
+    .style-row { gap: 6px; padding: 6px 9px; }
+    .style-row .dot { width: 18px; height: 18px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); }
+    .style-row .dot.on { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--accent); }
+    .style-row .sz { width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .style-row .sz span { display: block; background: var(--text); border-radius: 50%; }
+    .style-row .sz.on { background: var(--accent-soft); }
+
+    /* 预览画布：盖在选框上，按物理像素画 */
+    #paint { position: fixed; display: none; pointer-events: none; }
+    body.tool #sel, body.tool { cursor: crosshair; }
+    #textin { position: fixed; display: none; border: 1px dashed rgba(255, 255, 255, 0.85); outline: 1px dashed rgba(0, 0, 0, 0.5);
+      background: transparent; padding: 0 2px; margin: 0; line-height: 1.2; min-width: 60px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
   </style>
 </head>
 <body>
   <img id="bg" alt="" draggable="false">
   <div id="dim"></div>
+  <canvas id="paint"></canvas>
   <div class="cross" id="cx"></div>
   <div class="cross" id="cy"></div>
   <div id="sel">
@@ -61,7 +76,9 @@
   </div>
   <div id="size"></div>
   <div id="hint"></div>
+  <input id="textin" autocomplete="off" spellcheck="false">
   <div class="tb" id="toolbar" hidden></div>
+  <div class="tb style-row" id="style" hidden></div>
   <script type="module" src="js/capture/overlay.js"></script>
 </body>
 </html>
