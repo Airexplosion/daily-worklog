@@ -78,6 +78,41 @@ pub async fn note_skip(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn note_more(app: AppHandle) {
+    flow::note_more(&app);
+}
+
+#[tauri::command]
+pub fn note_text(app: AppHandle, text: String) {
+    flow::note_text(&app, &text);
+}
+
+#[tauri::command]
+pub fn note_blur(app: AppHandle) {
+    flow::note_blur(&app);
+}
+
+#[tauri::command]
+pub fn note_remove_shot(app: AppHandle, index: usize) -> Result<(), String> {
+    flow::note_remove_shot(&app, index)
+}
+
+#[tauri::command]
+pub fn note_discard(app: AppHandle) {
+    flow::discard_draft(&app);
+}
+
+#[tauri::command]
+pub fn bar_done(app: AppHandle) {
+    flow::bar_done(&app);
+}
+
+#[tauri::command]
+pub fn bar_current(app: AppHandle) -> Option<windows::BarView> {
+    flow::bar_current(&app)
+}
+
+#[tauri::command]
 pub fn toast_hide(app: AppHandle) {
     windows::hide_toast(&app);
 }

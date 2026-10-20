@@ -112,6 +112,7 @@ pub fn keep_backdrop(app: &AppHandle, index: usize) {
 pub const NOTE_SIZE: (f64, f64) = (660.0, 300.0);
 pub const TOAST_SIZE: (f64, f64) = (420.0, 150.0);
 pub const MAIN_SIZE: (f64, f64) = (900.0, 640.0);
+pub const BAR_SIZE: (f64, f64) = (560.0, 64.0);
 
 /// 软件启动时建好补充框和提示窗，用的时候直接显示，省掉加载页面的时间
 pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
@@ -125,6 +126,22 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .always_on_top(true)
             .skip_taskbar(true)
             .shadow(false)
+            .visible(false)
+            .build()?;
+    }
+    if app.get_webview_window("bar").is_none() {
+        WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("bar.html".into()))
+            .title("再截一张")
+            .inner_size(BAR_SIZE.0, BAR_SIZE.1)
+            .decorations(false)
+            .transparent(true)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .focused(false)
+            // 不抢焦点：用户要在下面的窗口里翻聊天记录
+            .focusable(false)
             .visible(false)
             .build()?;
     }
@@ -179,6 +196,33 @@ pub fn show_note(app: &AppHandle, monitor: (i32, i32, u32, u32, f64), payload: N
 
 pub fn hide_note(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("note") {
+        let _ = w.hide();
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BarView {
+    /// 已经截了几张
+    pub count: usize,
+    pub hotkey: String,
+}
+
+/// "再截一张"的小条：截图那块屏顶部居中，不抢焦点
+pub fn show_bar(app: &AppHandle, monitor: (i32, i32, u32, u32, f64), view: BarView) {
+    let Some(w) = app.get_webview_window("bar") else { return };
+    let (mx, my, mw, _mh, scale) = monitor;
+    let pw = (BAR_SIZE.0 * scale).round() as u32;
+    let ph = (BAR_SIZE.1 * scale).round() as u32;
+    let x = mx + (mw as i32 - pw as i32) / 2;
+    let y = my + (16.0 * scale) as i32;
+    let _ = place_physical(&w, x, y, pw, ph);
+    let _ = app.emit_to("bar", "bar:show", view);
+    let _ = w.show();
+}
+
+pub fn hide_bar(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("bar") {
         let _ = w.hide();
     }
 }

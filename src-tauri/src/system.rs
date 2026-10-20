@@ -27,7 +27,7 @@ pub fn close_action(label: &str) -> CloseAction {
     match label {
         "main" => CloseAction::HideMain,
         "note" => CloseAction::SkipNote,
-        "toast" => CloseAction::Hide,
+        "toast" | "bar" => CloseAction::Hide,
         l if l.starts_with("capture-") => CloseAction::CancelCapture,
         _ => CloseAction::Allow,
     }
@@ -192,8 +192,8 @@ fn purge_daily(app: &AppHandle) {
 fn check_reminder(app: &AppHandle) {
     purge_daily(app);
     let state = app.state::<AppState>();
-    // 正在截图时先不打扰，下一轮再看
-    if state.capturing.load(std::sync::atomic::Ordering::SeqCst) {
+    // 正在截图、还有一条没记完时先不打扰，下一轮再看
+    if state.capturing.load(std::sync::atomic::Ordering::SeqCst) || state.draft.lock().unwrap().is_some() {
         return;
     }
     let now = chrono::Local::now().naive_local();
@@ -260,6 +260,7 @@ mod tests {
         assert_eq!(close_action("capture-0"), CloseAction::CancelCapture);
         assert_eq!(close_action("capture-12"), CloseAction::CancelCapture);
         assert_eq!(close_action("toast"), CloseAction::Hide);
+        assert_eq!(close_action("bar"), CloseAction::Hide);
         assert_eq!(close_action("onboarding"), CloseAction::Allow);
     }
 }

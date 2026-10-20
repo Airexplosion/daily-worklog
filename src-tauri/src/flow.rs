@@ -6,7 +6,7 @@ use crate::draft::{Draft, MAX_SHOTS};
 use crate::model::{now_iso, EnterAction};
 use crate::recognize::{self, Job};
 use crate::state::{AppState, Session};
-use crate::windows::{self, NoteOpen, ToastPayload};
+use crate::windows::{self, BarView, NoteOpen, ToastPayload};
 use image::RgbaImage;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
@@ -50,13 +50,10 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
     }
     let has_draft = state.draft.lock().unwrap().is_some();
     if has_draft {
-        // 还没记完的一条：先把补一句小窗叫到前面
-        state.capturing.store(false, Ordering::SeqCst);
-        if let Some(w) = app.get_webview_window("note") {
-            let _ = w.show();
-            let _ = w.set_focus();
-        }
-        return;
+        // 还没记完的一条：小窗、小条、变暗背景先收起来，这一张截下来加到这条里
+        windows::hide_note(&app);
+        windows::hide_bar(&app);
+        windows::hide_overlays(&app);
     }
     let session = {
         let mut s = state.settings.lock().unwrap();
@@ -73,8 +70,8 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
     let toast_was_visible = app.get_webview_window("toast").and_then(|w| w.is_visible().ok()).unwrap_or(false);
     windows::hide_toast(&app);
     std::thread::spawn(move || {
-        // 上一条的提示窗刚藏起来，等它真的消失再截
-        if toast_was_visible {
+        // 刚藏起来的提示窗、补一句小窗，等它们真的消失再截
+        if toast_was_visible || has_draft {
             std::thread::sleep(std::time::Duration::from_millis(150));
         }
         let t0 = Instant::now();
@@ -162,13 +159,23 @@ pub fn overlay_ready(app: &AppHandle, index: usize) {
     }
 }
 
-/// Esc、右键、关窗口、出错：结束这次截图
+/// Esc、右键、关窗口、出错：结束这次截图；有没记完的一条就回到补一句小窗
 pub fn cancel(app: &AppHandle) {
     let state = app.state::<AppState>();
     windows::hide_overlays(app);
     *state.frozen.lock().unwrap() = None;
     end_session(&state);
-    restore_main_if_needed(app);
+    after_capture(app);
+}
+
+/// 这次截图结束（复制、另存、取消）：有没记完的一条就回到它；没有就把主窗口叫回来（如果是从主窗口开始的）
+fn after_capture(app: &AppHandle) {
+    let has_draft = app.state::<AppState>().draft.lock().unwrap().is_some();
+    if has_draft {
+        show_draft_note(app, false, None);
+    } else {
+        restore_main_if_needed(app);
+    }
 }
 
 /// 从主窗口点"截一张"的，截完（或取消）把主窗口叫回来
@@ -208,7 +215,7 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
                 .write_image(&tauri::image::Image::new_owned(img.into_raw(), w, h))
                 .map_err(|e| format!("复制失败：{e}"))?;
             flash(app, "已复制");
-            restore_main_if_needed(app);
+            after_capture(app);
             Ok(())
         }
         Action::Save => {
@@ -217,7 +224,7 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
             let app = app.clone();
             std::thread::spawn(move || {
                 save_as(&app, &img);
-                restore_main_if_needed(&app);
+                after_capture(&app);
             });
             Ok(())
         }
@@ -243,7 +250,27 @@ pub fn finish(app: &AppHandle, index: usize, rect: PhysRect, img: RgbaImage, act
             show_draft_note(app, true, None);
             Ok(())
         }
-        Action::Add => Err("没有正在记的这一条".into()),
+        Action::Add => {
+            let full = state.draft.lock().unwrap().as_ref().is_none_or(|d| d.is_full());
+            if full {
+                windows::hide_overlays(app);
+                state.capturing.store(false, Ordering::SeqCst);
+                show_draft_note(app, false, Some(format!("一条最多 {MAX_SHOTS} 张，多出来的没加")));
+                return Ok(());
+            }
+            let rel = save_shot(&state, &capture::shot_id(frozen.taken_at.naive_local()), &img)?;
+            if let Some(d) = state.draft.lock().unwrap().as_mut() {
+                d.add_shots(&[rel]);
+                if let Err(e) = state.store.save_draft(d) {
+                    log::error!("保存草稿失败：{e}");
+                }
+            }
+            *state.last_rect.lock().unwrap() = Some(LastRect { index, monitor: (m.x, m.y, m.width, m.height), rect });
+            windows::keep_backdrop(app, index);
+            state.capturing.store(false, Ordering::SeqCst);
+            show_draft_note(app, true, None);
+            Ok(())
+        }
     }
 }
 
@@ -347,6 +374,7 @@ pub fn commit_draft(app: &AppHandle, note: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut d = state.draft.lock().unwrap().take().ok_or("没有待记录的截图")?;
     windows::hide_note(app);
+    windows::hide_bar(app);
     windows::hide_overlays(app);
     d.note = note.to_string();
     let date = d.date.clone();
@@ -390,4 +418,86 @@ pub fn commit_draft(app: &AppHandle, note: &str) -> Result<(), String> {
 
 fn day_len(data: &crate::model::Data, date: &str) -> usize {
     data.days.get(date).map_or(0, |d| d.items.len())
+}
+
+/// 刷新补一句小窗的内容，不改位置、不抢焦点
+fn refresh_note(app: &AppHandle, message: Option<String>) {
+    if let Some(open) = note_open(app, message) {
+        let _ = app.emit_to("note", "note:open", open);
+    }
+}
+
+fn bar_view(state: &AppState) -> Option<BarView> {
+    let count = state.draft.lock().unwrap().as_ref()?.shots.len();
+    Some(BarView { count, hotkey: state.settings.lock().unwrap().hotkey.clone() })
+}
+
+/// "再截一张"：收起小窗和变暗背景，屏幕恢复可操作，顶部挂一个小条
+pub fn note_more(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(monitor) = state.draft.lock().unwrap().as_ref().map(|d| d.monitor) else { return };
+    let Some(view) = bar_view(&state) else { return };
+    windows::hide_note(app);
+    windows::hide_overlays(app);
+    windows::show_bar(app, monitor, view);
+}
+
+pub fn bar_current(app: &AppHandle) -> Option<BarView> {
+    bar_view(&app.state::<AppState>())
+}
+
+/// 小条上的"不截了，去写说明"
+pub fn bar_done(app: &AppHandle) {
+    windows::hide_bar(app);
+    show_draft_note(app, false, None);
+}
+
+/// 输入框里的字随时存进草稿（"再截一张"来回、崩溃后都还在）
+pub fn note_text(app: &AppHandle, text: &str) {
+    let state = app.state::<AppState>();
+    let mut draft = state.draft.lock().unwrap();
+    if let Some(d) = draft.as_mut() {
+        d.note = text.to_string();
+        if let Err(e) = state.store.save_draft(d) {
+            log::error!("保存草稿失败：{e}");
+        }
+    }
+}
+
+/// 小窗失去焦点（用户切去别的窗口找图）：收起变暗背景，下面的窗口才看得见、拖得过来
+pub fn note_blur(app: &AppHandle) {
+    if !app.state::<AppState>().capturing.load(Ordering::SeqCst) {
+        windows::hide_overlays(app);
+    }
+}
+
+/// 缩略图上的 ×：去掉这张并删文件（只剩一张时不动）
+pub fn note_remove_shot(app: &AppHandle, index: usize) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let removed = {
+        let mut draft = state.draft.lock().unwrap();
+        let d = draft.as_mut().ok_or("没有正在记的这一条")?;
+        let removed = d.remove_shot(index).ok_or("至少要留一张")?;
+        if let Err(e) = state.store.save_draft(d) {
+            log::error!("保存草稿失败：{e}");
+        }
+        removed
+    };
+    let _ = std::fs::remove_file(state.store.dir().join(&removed));
+    refresh_note(app, None);
+    Ok(())
+}
+
+/// "不记了"：这条的图删掉、草稿作废，什么都不记，也不发给 AI
+pub fn discard_draft(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(d) = state.draft.lock().unwrap().take() else { return };
+    windows::hide_note(app);
+    windows::hide_bar(app);
+    windows::hide_overlays(app);
+    for rel in &d.shots {
+        let _ = std::fs::remove_file(state.store.dir().join(rel));
+    }
+    state.store.clear_draft();
+    restore_main_if_needed(app);
 }
