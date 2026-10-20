@@ -363,15 +363,16 @@ textin.addEventListener('blur', () => commitText());
 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || busy) return;
+  // 正在打字时点哪儿（框里框外）都只是结束这段文字，不画新的、不重新框选
+  if (textAt) {
+    commitText();
+    return;
+  }
   const p = clampPoint(e);
   const handle = rect ? hitHandle(rect, p) : null;
   const inside = !!rect && p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
   if (rect && tool && inside && (locked || handle === 'move')) {
     // 选了工具：在选框里按下就画（选框固定以后，边上也能画）
-    if (textAt) {
-      commitText();
-      return;
-    }
     if (tool === 'text') {
       startText(p);
       return;
