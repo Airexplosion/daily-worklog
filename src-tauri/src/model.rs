@@ -128,6 +128,14 @@ pub struct UpdateState {
     pub snoozed_until: Option<String>,
 }
 
+/// 框选后按回车做什么
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnterAction {
+    Copy,
+    Record,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -155,6 +163,10 @@ pub struct Settings {
     pub shots_retention_days: u32,
     pub update: UpdateState,
     pub close_to_tray_tip_shown: bool,
+    /// 框选后按回车：复制或记录。None = 老版本升级上来还没选过（第一次截图时提示一次）
+    pub enter_action: Option<EnterAction>,
+    /// 另存为上次存的文件夹
+    pub last_save_dir: Option<String>,
 }
 
 pub const DEFAULT_BANNED_WORDS: [&str; 7] =
@@ -184,6 +196,8 @@ impl Default for Settings {
             shots_retention_days: 90,
             update: UpdateState::default(),
             close_to_tray_tip_shown: false,
+            enter_action: None,
+            last_save_dir: None,
         }
     }
 }
@@ -259,5 +273,14 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"userName":"某某"}"#).unwrap();
         assert_eq!(s.user_name, "某某");
         assert_eq!(s.hotkey, "Ctrl+Alt+S");
+    }
+
+    #[test]
+    fn old_settings_have_no_enter_action() {
+        let s: Settings = serde_json::from_str(r#"{"onboardingDone": true, "userName": "x"}"#).unwrap();
+        assert_eq!(s.enter_action, None);
+        assert_eq!(s.last_save_dir, None);
+        let back = serde_json::to_value(Settings { enter_action: Some(EnterAction::Record), ..s }).unwrap();
+        assert_eq!(back["enterAction"], "record");
     }
 }

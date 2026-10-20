@@ -149,4 +149,12 @@ mod tests {
         let many = parse_tag_list(r#"["a1","a2","a3","a4","a5","a6","a7","a8","a9","a1"]"#);
         assert_eq!(many.len(), 8);
     }
+
+    #[test]
+    fn apply_patch_enter_action() {
+        let s = Settings::default();
+        let next = apply_patch(&s, &json!({ "enterAction": "record" })).unwrap();
+        assert_eq!(next.enter_action, Some(crate::model::EnterAction::Record));
+        assert!(apply_patch(&s, &json!({ "enterAction": "x" })).is_err());
+    }
 }
