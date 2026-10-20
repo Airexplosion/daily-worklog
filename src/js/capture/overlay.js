@@ -73,6 +73,8 @@ let drawing = null;
 /** 文字工具：正在打字的位置（选区内物理像素） @type {{x: number, y: number} | null} */
 let textAt = null;
 let bgReady = false;
+/** 这次截图的升级提示已经显示过 */
+let hintSeen = false;
 // 测试只读
 Object.defineProperty(window, '__shapes', { get: () => shapes.slice() });
 
@@ -93,6 +95,11 @@ function setHint() {
   } else if (info?.hint) {
     hint.className = 'warn';
     hint.textContent = info.hint;
+    // 用户真的看到了才算数（框选前就按 Esc 的不算）
+    if (!hintSeen) {
+      hintSeen = true;
+      invoke('hint_seen');
+    }
   } else if (info?.primary === 'add') {
     hint.innerHTML = `已截 ${info.shotNo - 1} 张 · <b>回车</b> 沿用上次的框，或重新拖一个`;
   } else if (info?.primary === 'record') {
@@ -482,6 +489,7 @@ window.addEventListener('keydown', (e) => {
  */
 function load(next) {
   info = next;
+  hintSeen = false;
   reset();
   document.body.classList.remove('backdrop');
   physWidth = Number(new URL(next.url).searchParams.get('w')) || 0;

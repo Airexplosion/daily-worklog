@@ -56,14 +56,10 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
         windows::hide_overlays(&app);
     }
     let session = {
-        let mut s = state.settings.lock().unwrap();
-        let hint = capture_mode::needs_upgrade_hint(&s).then(|| {
-            s.enter_action = Some(EnterAction::Copy);
-            if let Err(e) = state.store.save_settings(&s) {
-                log::error!("保存设置失败：{e}");
-            }
-            capture_mode::UPGRADE_HINT.to_string()
-        });
+        let s = state.settings.lock().unwrap();
+        // 升级提示只给回车是"复制"的那种截图（热键、托盘，且不是在加到这条）；页面真显示了才算看过（hint_seen）
+        let by_key = matches!(origin, Origin::Hotkey | Origin::Tray) && !has_draft;
+        let hint = (by_key && capture_mode::needs_upgrade_hint(&s)).then(|| capture_mode::UPGRADE_HINT.to_string());
         Session { origin, primary: capture_mode::primary(origin, has_draft, s.enter_action), hint }
     };
     *state.session.lock().unwrap() = Some(session);
@@ -571,4 +567,16 @@ fn main_monitor(app: &AppHandle) -> (i32, i32, u32, u32, f64) {
     m.map_or((0, 0, 1920, 1080, 1.0), |m| {
         (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())
     })
+}
+
+/// 框选页真的把升级提示显示出来了：记下"复制"，以后不再提示
+pub fn hint_seen(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let mut s = state.settings.lock().unwrap();
+    if s.enter_action.is_none() {
+        s.enter_action = Some(EnterAction::Copy);
+        if let Err(e) = state.store.save_settings(&s) {
+            log::error!("保存设置失败：{e}");
+        }
+    }
 }

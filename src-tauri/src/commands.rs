@@ -58,6 +58,11 @@ pub fn capture_pixels(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
 }
 
 #[tauri::command]
+pub fn hint_seen(app: AppHandle) {
+    flow::hint_seen(&app);
+}
+
+#[tauri::command]
 pub fn capture_cancel(app: AppHandle) {
     flow::cancel(&app);
 }

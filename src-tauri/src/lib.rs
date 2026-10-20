@@ -198,6 +198,7 @@ pub fn run() {
             commands::capture_done,
             commands::capture_pixels,
             commands::capture_cancel,
+            commands::hint_seen,
             commands::note_current,
             commands::note_submit,
             commands::note_skip,
