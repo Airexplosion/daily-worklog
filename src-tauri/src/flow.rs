@@ -26,6 +26,8 @@ pub struct CaptureInfo {
     /// 物理像素；只在"加到这条"且同屏同几何时给
     pub last_rect: Option<RectView>,
     pub hint: Option<String>,
+    /// 没记完的那条已经满 9 张：不能再加，只能复制或另存
+    pub full: bool,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -48,7 +50,12 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
     if state.capturing.swap(true, Ordering::SeqCst) {
         return;
     }
-    let has_draft = state.draft.lock().unwrap().is_some();
+    let draft_state = match state.draft.lock().unwrap().as_ref() {
+        None => capture_mode::DraftState::None,
+        Some(d) if d.is_full() => capture_mode::DraftState::Full,
+        Some(_) => capture_mode::DraftState::Open,
+    };
+    let has_draft = draft_state != capture_mode::DraftState::None;
     if has_draft {
         // 还没记完的一条：小窗、小条、变暗背景先收起来，这一张截下来加到这条里
         windows::hide_note(&app);
@@ -60,7 +67,7 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
         // 升级提示只给回车是"复制"的那种截图（热键、托盘，且不是在加到这条）；页面真显示了才算看过（hint_seen）
         let by_key = matches!(origin, Origin::Hotkey | Origin::Tray) && !has_draft;
         let hint = (by_key && capture_mode::needs_upgrade_hint(&s)).then(|| capture_mode::UPGRADE_HINT.to_string());
-        Session { origin, primary: capture_mode::primary(origin, has_draft, s.enter_action), hint }
+        Session { origin, primary: capture_mode::primary(origin, draft_state, s.enter_action), hint }
     };
     *state.session.lock().unwrap() = Some(session);
     let toast_was_visible = app.get_webview_window("toast").and_then(|w| w.is_visible().ok()).unwrap_or(false);
@@ -111,13 +118,13 @@ fn end_session(state: &AppState) {
 fn capture_info(state: &AppState, frozen: &Frozen, index: usize) -> CaptureInfo {
     let (primary, hint) =
         state.session.lock().unwrap().as_ref().map(|s| (s.primary, s.hint.clone())).unwrap_or((Action::Copy, None));
-    let shot_no = state.draft.lock().unwrap().as_ref().map_or(1, |d| d.shots.len() + 1);
+    let (shot_no, full) = state.draft.lock().unwrap().as_ref().map_or((1, false), |d| (d.shots.len() + 1, d.is_full()));
     let geometry = frozen.monitors.iter().find(|m| m.index == index).map(|m| (m.x, m.y, m.width, m.height));
     let last_rect = match (primary, geometry) {
         (Action::Add, Some(g)) => capture_mode::last_rect_for(state.last_rect.lock().unwrap().as_ref(), index, g).map(RectView::from),
         _ => None,
     };
-    CaptureInfo { url: windows::frozen_url(frozen, index), primary, shot_no, last_rect, hint }
+    CaptureInfo { url: windows::frozen_url(frozen, index), primary, shot_no, last_rect, hint, full }
 }
 
 /// 框选页面启动时调用：如果正在截图，返回这块屏的定格画面和主按钮等
@@ -299,10 +306,8 @@ fn save_as(app: &AppHandle, img: &RgbaImage) {
         dialog = dialog.set_directory(d);
     }
     let Some(picked) = dialog.blocking_save_file() else { return };
-    let Ok(mut path) = picked.into_path() else { return };
-    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
-        path.set_extension("png");
-    }
+    let Ok(picked) = picked.into_path() else { return };
+    let path = capture_mode::save_target(&picked, |p| p.exists());
     match std::fs::write(&path, capture::png_bytes(img)) {
         Ok(()) => {
             if let Some(parent) = path.parent() {

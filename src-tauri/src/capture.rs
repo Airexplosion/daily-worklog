@@ -138,18 +138,14 @@ pub fn png_bytes(img: &RgbaImage) -> Vec<u8> {
     buf
 }
 
-/// 发给 AI 的图：长边不超过 1600，JPEG 质量 85
+/// 发给 AI 的图：长边不超过 1600，JPEG 质量 85。透明的地方铺白底（JPEG 没有透明，直接丢掉会变黑）
 pub fn ai_jpeg(img: &RgbaImage) -> Vec<u8> {
-    let (w, h) = img.dimensions();
-    let long = w.max(h);
-    let rgb = if long > AI_MAX_SIDE {
-        let ratio = AI_MAX_SIDE as f64 / long as f64;
-        let nw = ((w as f64 * ratio).round() as u32).max(1);
-        let nh = ((h as f64 * ratio).round() as u32).max(1);
-        DynamicImage::ImageRgba8(imageops::resize(img, nw, nh, FilterType::Triangle)).to_rgb8()
-    } else {
-        DynamicImage::ImageRgba8(img.clone()).to_rgb8()
-    };
+    let small = shrink_to(img, AI_MAX_SIDE);
+    let rgb = image::RgbImage::from_fn(small.width(), small.height(), |x, y| {
+        let [r, g, b, a] = small.get_pixel(x, y).0;
+        let over = |c: u8| ((c as u32 * a as u32 + 255 * (255 - a as u32)) / 255) as u8;
+        image::Rgb([over(r), over(g), over(b)])
+    });
     let mut buf = Vec::new();
     JpegEncoder::new_with_quality(&mut buf, AI_JPEG_QUALITY).encode_image(&rgb).expect("JPEG 编码不会失败");
     buf
@@ -402,5 +398,13 @@ mod tests {
         let small = RgbaImage::new(100, 100);
         let c = compose_group(&[big, small]);
         assert!(c.width() <= 1700 && c.height() <= 1700, "{:?}", c.dimensions());
+    }
+
+    #[test]
+    fn ai_jpeg_puts_transparency_on_white() {
+        let clear = RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 0]));
+        let back = image::load_from_memory(&ai_jpeg(&clear)).unwrap().to_rgb8();
+        let p = back.get_pixel(4, 4);
+        assert!(p.0.iter().all(|&c| c > 240), "{p:?}");
     }
 }

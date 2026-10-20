@@ -118,7 +118,12 @@ pub fn vision_prompt(s: &Settings, images: usize, merged: bool) -> String {
     } else {
         VISION_TEXT_ONLY_TEMPLATE
     });
-    let mut parts = vec![fill(template, s)];
+    let mut body = fill(template, s);
+    if images >= 2 && override_of(&s.prompt_overrides.vision).is_none() {
+        // 默认模板第一句按张数说；用户自己改过的提示词不动
+        body = body.replacen("一张电脑屏幕截图", "几张电脑屏幕截图（是同一件事）", 1);
+    }
+    let mut parts = vec![body];
     if images >= 2 {
         parts.push(multi_image_note(images, merged));
     } else if merged {
@@ -227,5 +232,13 @@ mod tests {
         let p = vision_prompt(&s, 2, false);
         assert!(p.starts_with("自定义识图提示词"));
         assert!(p.contains("这次给你的是 2 张截图") && p.contains(ANNOTATION_NOTE) && p.ends_with(VISION_TAIL), "{p}");
+    }
+
+    #[test]
+    fn default_template_first_sentence_follows_image_count() {
+        let s = settings();
+        assert!(vision_prompt(&s, 1, false).contains("一张电脑屏幕截图"));
+        let three = vision_prompt(&s, 3, false);
+        assert!(three.contains("几张电脑屏幕截图") && !three.contains("一张电脑屏幕截图"), "{three}");
     }
 }

@@ -8,6 +8,10 @@ use std::path::{Path, PathBuf};
 
 /// 导入的图长边最多这么大，再大就缩（存进去太占地方，AI 那边也会再缩）
 pub const IMPORT_MAX_SIDE: u32 = 8000;
+/// 文件超过这么大就不读（拖进来的视频、压缩包不往内存里读）
+pub const MAX_IMPORT_BYTES: u64 = 200 * 1024 * 1024;
+/// 解码时最多占这么多内存（image 自带的是 512 MiB，一万多像素的大图会被当成读不出来）
+pub const IMPORT_MAX_ALLOC: u64 = 1536 * 1024 * 1024;
 
 const IMAGE_EXTS: [&str; 5] = ["png", "jpg", "jpeg", "bmp", "webp"];
 
@@ -61,10 +65,32 @@ pub fn sort_paths(paths: &mut [PathBuf]) {
     paths.sort_by(|a, b| natural_cmp(&name(a), &name(b)));
 }
 
-/// 认不出、0 字节都是 None；认出来的长边超过上限就缩
+/// 值得读进来：扩展名是图片，大小也正常
+pub fn worth_reading(path: &Path, len: u64) -> bool {
+    is_image_path(path) && len <= MAX_IMPORT_BYTES
+}
+
+/// 认不出、0 字节都是 None；按 EXIF 方向转正（手机竖拍的照片）；长边超过上限就缩
 pub fn decode(bytes: &[u8]) -> Option<RgbaImage> {
-    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
-    Some(fit_within(img, IMPORT_MAX_SIDE))
+    decode_with_limit(bytes, IMPORT_MAX_ALLOC)
+}
+
+pub fn decode_with_limit(bytes: &[u8], max_alloc: u64) -> Option<RgbaImage> {
+    use image::ImageDecoder;
+    let reader = || image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok();
+    // 方向只读文件头；解码走 decode()，它才会按内存上限检查
+    let orientation = reader()?
+        .into_decoder()
+        .ok()
+        .and_then(|mut d| d.orientation().ok())
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut r = reader()?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(max_alloc);
+    r.limits(limits);
+    let mut img = r.decode().ok()?;
+    img.apply_orientation(orientation);
+    Some(fit_within(img.to_rgba8(), IMPORT_MAX_SIDE))
 }
 
 pub fn fit_within(img: RgbaImage, max: u32) -> RgbaImage {
@@ -152,5 +178,42 @@ mod tests {
             outcome_message(1, 3).as_deref(),
             Some("一条最多 9 张，多出来的没加；有 3 个文件不是图片或读不出来，没加")
         );
+    }
+
+    #[test]
+    fn only_image_files_of_sane_size_are_read() {
+        assert!(worth_reading(&PathBuf::from("a.png"), 1024));
+        assert!(!worth_reading(&PathBuf::from("movie.mp4"), 1024));
+        assert!(!worth_reading(&PathBuf::from("huge.png"), MAX_IMPORT_BYTES + 1));
+    }
+
+    #[test]
+    fn decode_respects_alloc_limit() {
+        let png = crate::capture::png_bytes(&RgbaImage::new(100, 100));
+        assert!(decode_with_limit(&png, 1000).is_none());
+        assert!(decode_with_limit(&png, IMPORT_MAX_ALLOC).is_some());
+        // 默认上限要比 image 自带的 512 MiB 大：12000×12000 的图也认得出
+        assert!(IMPORT_MAX_ALLOC > 12000 * 12000 * 4);
+    }
+
+    /// 3×2 的 JPEG，带 EXIF 方向 6（要顺时针转 90 度）
+    fn jpeg_with_orientation_6() -> Vec<u8> {
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90)
+            .encode(&[200u8; 3 * 2 * 3], 3, 2, image::ExtendedColorType::Rgb8)
+            .unwrap();
+        let mut tiff = b"Exif\0\0II\x2a\x00\x08\x00\x00\x00".to_vec();
+        tiff.extend_from_slice(&[1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0]);
+        let mut out = jpeg[..2].to_vec();
+        out.extend_from_slice(&[0xFF, 0xE1]);
+        out.extend_from_slice(&((tiff.len() + 2) as u16).to_be_bytes());
+        out.extend_from_slice(&tiff);
+        out.extend_from_slice(&jpeg[2..]);
+        out
+    }
+
+    #[test]
+    fn decode_follows_exif_orientation() {
+        assert_eq!(decode(&jpeg_with_orientation_6()).map(|i| i.dimensions()), Some((2, 3)));
     }
 }

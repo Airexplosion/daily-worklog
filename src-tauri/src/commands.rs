@@ -132,7 +132,10 @@ async fn import_paths(app: AppHandle, paths: Vec<String>, started: Option<String
         let mut imgs = Vec::new();
         let mut unreadable = 0;
         for p in &paths {
-            match std::fs::read(p).ok().and_then(|b| crate::import::decode(&b)) {
+            // 不是图片、或者大得离谱的文件（拖进来的视频、压缩包）不往内存里读
+            let len = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+            let bytes = crate::import::worth_reading(p, len).then(|| std::fs::read(p).ok()).flatten();
+            match bytes.and_then(|b| crate::import::decode(&b)) {
                 Some(img) => imgs.push(img),
                 None => unreadable += 1,
             }

@@ -11,7 +11,7 @@ import { COLORS, FONT_SIZES, drawShape, fontFor, loadStyle, saveStyle } from './
 /** @typedef {import('./geometry.js').Point} Point */
 /** @typedef {import('./geometry.js').Handle} Handle */
 /** @typedef {'copy' | 'record' | 'add'} Primary */
-/** @typedef {{url: string, primary: Primary, shotNo: number, lastRect: Rect | null, hint: string | null}} CaptureInfo */
+/** @typedef {{url: string, primary: Primary, shotNo: number, lastRect: Rect | null, hint: string | null, full: boolean}} CaptureInfo */
 /** @typedef {import('./shapes.js').Shape} Shape */
 /** @typedef {import('./shapes.js').Tool} Tool */
 
@@ -100,6 +100,8 @@ function setHint() {
       hintSeen = true;
       invoke('hint_seen');
     }
+  } else if (info?.full) {
+    hint.innerHTML = '这条已满 9 张，只能复制或保存　<b>Enter</b> 复制　<b>Ctrl+S</b> 保存　<b>Esc</b> 取消';
   } else if (info?.primary === 'add') {
     hint.innerHTML = `已截 ${info.shotNo - 1} 张 · <b>回车</b> 沿用上次的框，或重新拖一个`;
   } else if (info?.primary === 'record') {
@@ -113,7 +115,10 @@ function setHint() {
 function buildToolbar() {
   const primary = info?.primary ?? 'copy';
   /** @type {[string, string, string][]} */
-  const acts = primary === 'copy'
+  const acts = info?.full
+    // 没记完的那条已满 9 张：加不进去了，只能复制或另存
+    ? [['save', '保存…', 'Ctrl+S'], ['copy', '复制', 'Enter']]
+    : primary === 'copy'
     ? [['save', '保存…', 'Ctrl+S'], ['record', '记录', 'Tab'], ['copy', '复制', 'Enter']]
     : [['save', '保存…', 'Ctrl+S'], ['copy', '复制', 'Ctrl+C'],
       primary === 'add' ? ['add', `加到这条（第 ${info?.shotNo ?? 2} 张）`, 'Enter'] : ['record', '记录', 'Enter']];
@@ -295,6 +300,7 @@ async function act(name) {
     return;
   }
   if (!rect) return;
+  if (info?.full && (name === 'record' || name === 'add')) return;
   commitText();
   const action = name === 'primary' ? info?.primary ?? 'copy' : name;
   const r = toPhys(rect, scale());

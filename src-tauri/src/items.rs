@@ -241,4 +241,16 @@ mod tests {
         undo_delete(&mut d, back, "t");
         assert_eq!(d.days["2026-10-15"].items.len(), 3);
     }
+
+    #[test]
+    fn delete_and_undo_keep_every_shot_of_a_multi_image_item() {
+        let mut d = data();
+        let shots: Vec<String> = (1..=3).map(|i| format!("shots/m{i}.png")).collect();
+        d.days.get_mut("2026-10-15").unwrap().items[1].shots = shots.clone();
+        let removed = delete(&mut d, "b", "t1").unwrap();
+        // 撤销期过后后台按 removed.item.shots 删文件：三张都要在里面
+        assert_eq!(removed.item.shots, shots);
+        undo_delete(&mut d, removed, "t2");
+        assert_eq!(d.days["2026-10-15"].items[1].shots, shots);
+    }
 }
