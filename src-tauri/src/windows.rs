@@ -46,6 +46,7 @@ pub fn ensure_overlays_for(app: &AppHandle, geometry: &[(i32, i32, u32, u32)]) -
     for w in overlay_windows(app) {
         let _ = w.destroy();
     }
+    let mut excluded = true;
     for (index, &(x, y, width, height)) in geometry.iter().enumerate() {
         let w = WebviewWindowBuilder::new(app, overlay_label(index), WebviewUrl::App(format!("capture.html?i={index}").into()))
             .title("截图")
@@ -59,7 +60,12 @@ pub fn ensure_overlays_for(app: &AppHandle, geometry: &[(i32, i32, u32, u32)]) -
             .focused(false)
             .build()?;
         no_transitions(&w);
+        excluded &= exclude_from_capture(&w);
         place_physical(&w, x, y, width, height)?;
+    }
+    state.overlays_excluded.store(excluded && !geometry.is_empty(), std::sync::atomic::Ordering::SeqCst);
+    if !excluded {
+        log::warn!("这台电脑不支持让框选窗口不被截进去，改回先抓屏再显示");
     }
     *current = geometry.to_vec();
     Ok(())
@@ -73,6 +79,13 @@ pub fn no_transitions(w: &WebviewWindow) {
     unsafe {
         DwmSetWindowAttribute(hwnd.0 as _, DWMWA_TRANSITIONS_FORCEDISABLED as u32, &on as *const i32 as *const _, 4);
     }
+}
+
+/// 让窗口不出现在任何截屏里（Win10 2004 起支持）。框选窗口这样设了，就能先显示出来再抓屏，按下热键马上有反应
+pub fn exclude_from_capture(w: &WebviewWindow) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
+    let Ok(hwnd) = w.hwnd() else { return false };
+    unsafe { SetWindowDisplayAffinity(hwnd.0 as _, WDA_EXCLUDEFROMCAPTURE) != 0 }
 }
 
 /// 先移到目标屏再设尺寸：跨缩放比例的屏移动时系统会按新 DPI 改一次尺寸，所以尺寸放后面
@@ -94,6 +107,33 @@ pub fn frozen_url(frozen: &Frozen, index: usize) -> String {
 pub fn start_overlays<T: Serialize + Clone>(app: &AppHandle, infos: Vec<(usize, T)>) {
     for (index, info) in infos {
         let _ = app.emit_to(overlay_label(index), "capture:start", info);
+    }
+}
+
+/// 按当前显示器摆好每块屏的框选窗口（改了缩放、换了显示器时尺寸可能不对）
+#[derive(Clone, Serialize)]
+struct FrozenReady {
+    url: String,
+}
+
+/// 先显示的路线：抓屏好了，通知每块屏换上定格画面
+pub fn frozen_ready(app: &AppHandle, urls: Vec<(usize, String)>) {
+    for (index, url) in urls {
+        let _ = app.emit_to(overlay_label(index), "capture:frozen", FrozenReady { url });
+    }
+}
+
+pub fn place_overlays(app: &AppHandle, geometry: &[(i32, i32, u32, u32)]) {
+    for (index, &(x, y, w, h)) in geometry.iter().enumerate() {
+        if let Some(win) = app.get_webview_window(&overlay_label(index)) {
+            let _ = place_physical(&win, x, y, w, h);
+        }
+    }
+}
+
+pub fn show_overlays(app: &AppHandle) {
+    for w in overlay_windows(app) {
+        let _ = w.show();
     }
 }
 
@@ -127,6 +167,7 @@ pub const BAR_SIZE: (f64, f64) = (560.0, 64.0);
 
 /// 软件启动时建好补充框和提示窗，用的时候直接显示，省掉加载页面的时间
 pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
+    let mut aux_ok = true;
     if app.get_webview_window("note").is_none() {
         let w = WebviewWindowBuilder::new(app, "note", WebviewUrl::App("note.html".into()))
             .title("这一条在干啥？")
@@ -140,6 +181,7 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .visible(false)
             .build()?;
         no_transitions(&w);
+        aux_ok &= exclude_from_capture(&w);
     }
     if app.get_webview_window("bar").is_none() {
         let w = WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("bar.html".into()))
@@ -157,9 +199,10 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .visible(false)
             .build()?;
         no_transitions(&w);
+        aux_ok &= exclude_from_capture(&w);
     }
     if app.get_webview_window("toast").is_none() {
-        WebviewWindowBuilder::new(app, "toast", WebviewUrl::App("toast.html".into()))
+        let w = WebviewWindowBuilder::new(app, "toast", WebviewUrl::App("toast.html".into()))
             .title("每日工作梳理 · 提示")
             .inner_size(TOAST_SIZE.0, TOAST_SIZE.1)
             .decorations(false)
@@ -173,7 +216,10 @@ pub fn create_aux_windows(app: &AppHandle) -> tauri::Result<()> {
             .focusable(false)
             .visible(false)
             .build()?;
+        // 提示窗自己有淡入淡出（网页里做的），这里只让它不被截进去
+        aux_ok &= exclude_from_capture(&w);
     }
+    app.state::<AppState>().aux_excluded.store(aux_ok, std::sync::atomic::Ordering::SeqCst);
     Ok(())
 }
 

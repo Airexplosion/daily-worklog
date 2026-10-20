@@ -18,6 +18,14 @@ pub fn overlay_ready(app: AppHandle, index: usize) {
 /// 没有标注：后端从定格原图裁剪
 #[tauri::command]
 pub async fn capture_done(app: AppHandle, index: usize, x: i64, y: i64, w: i64, h: i64, action: Action) -> Result<(), String> {
+    // 先显示框选窗口的路线：手很快时抓屏可能还没完，等一会儿（最多 2 秒）
+    for _ in 0..200 {
+        let state = app.state::<AppState>();
+        if state.frozen.lock().unwrap().is_some() || !state.capturing.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     let result = crate::capture::clamp_rect(x, y, w, h)
         .ok_or_else(|| "选区不在屏幕内".to_string())
         .and_then(|rect| flow::finish_rect(&app, index, rect, action));
@@ -414,7 +422,8 @@ pub fn mute_today(app: AppHandle) -> Result<(), String> {
 /// 网页里发起截图。主窗口右下角的"截一张"先把主窗口藏起来，免得截到它，截完再叫回来
 #[tauri::command]
 pub fn capture_start(app: AppHandle, origin: Origin) {
-    let delay = if origin == Origin::Main {
+    // 主窗口先藏起来；等它的收起动画放完再抓屏（框选窗口能先显示的话会马上显示）
+    let wait = if origin == Origin::Main {
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.hide();
         }
@@ -423,10 +432,7 @@ pub fn capture_start(app: AppHandle, origin: Origin) {
     } else {
         0
     };
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(delay));
-        flow::start_capture(app, origin);
-    });
+    std::thread::spawn(move || flow::start_capture_after(app, origin, std::time::Duration::from_millis(wait)));
 }
 
 // ───────────── 生成总结 ─────────────

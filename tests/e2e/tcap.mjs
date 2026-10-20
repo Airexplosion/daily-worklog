@@ -802,6 +802,33 @@ if (mode === 'stray-click') {
   ov.close();
 }
 
+if (mode === 'not-dim') {
+  // 先看屏幕正中那个点本来的颜色，截图记下来以后比一比：框选窗口要是被截进去了，图会是变暗的
+  // 按系统枚举顺序（和程序里第 0 块屏一致）取第 0 块屏的中心点，读它本来的颜色
+  const pt = () => JSON.parse(execSync(`python -I "${E}/screen_px.py"`, { encoding: 'utf8' }));
+  await main.eval(`window.__TAURI__.window.getCurrentWindow().hide()`);
+  // 屏幕正中放一块白的（不受截图影响的普通窗口）：被压暗的话会明显变灰
+  const { spawn } = await import('node:child_process');
+  spawn('python', ['-I', `${E}/white_patch.py`, '8'], { stdio: 'ignore' });
+  await sleep(900);
+  const [r, g, b, w, h] = pt();  // w、h 是第 0 块屏的物理宽高
+  check('参照点是白的', r > 230 && g > 230 && b > 230, String([r, g, b]));
+  const { ov } = await capture('hotkey');
+  const s = await ov.eval('window.devicePixelRatio');
+  // 第 0 块屏正中（物理像素）4×4 记下来
+  await inv(ov, 'capture_done', { index: 0, x: Math.round(w / 2), y: Math.round(h / 2), w: 4, h: 4, action: 'record' });
+  await sleep(800);
+  const d = draft();
+  if (d) {
+    const got = pix(`${D}/${d.shots[0]}`, [0, 0]).px[0];
+    const lum = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    check('截下来的图没有被框选窗口压暗', lum(got) > lum([r, g, b]) * 0.9, `屏幕 ${[r, g, b]} → 截图 ${got.slice(0, 3)}（缩放 ${s}）`);
+  } else {
+    check('截下来的图没有被框选窗口压暗', false, '没记下来');
+  }
+  ov.close();
+}
+
 main.close();
 console.log(failures() ? `${failures()} 项失败` : '全部通过');
 process.exit(failures() ? 1 : 0);

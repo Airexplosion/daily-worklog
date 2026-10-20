@@ -1,6 +1,6 @@
 //! 截图主流程：热键 → 定格 → 框选（可标注）→ 复制 / 另存 / 记录进草稿 → 补充说明 → 落盘 → 后台识别。
 
-use crate::capture::{self, Frozen, PhysRect};
+use crate::capture::{self, PhysRect};
 use crate::capture_mode::{self, Action, LastRect, Origin};
 use crate::draft::{Draft, MAX_SHOTS};
 use crate::model::{now_iso, EnterAction};
@@ -19,7 +19,10 @@ use tauri_plugin_dialog::DialogExt;
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureInfo {
-    pub url: String,
+    /// 定格画面地址；先显示框选窗口、还在抓屏时是空的，抓好后另发 capture:frozen
+    pub url: Option<String>,
+    /// 这块屏的物理宽度（页面拿它换算缩放）
+    pub phys_w: u32,
     pub primary: Action,
     /// 有没记完的一条时是第几张（草稿张数 + 1），否则 1
     pub shot_no: usize,
@@ -46,6 +49,13 @@ impl From<PhysRect> for RectView {
 
 /// 热键、托盘、主窗口、引导都从这里开始。截图流程进行中时再按无效
 pub fn start_capture(app: AppHandle, origin: Origin) {
+    start_capture_after(app, origin, std::time::Duration::ZERO);
+}
+
+static CAPTURE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// wait：抓屏前还要等多久（托盘菜单、主窗口收起的动画）。框选窗口不会被截进去时，先显示框选窗口再等、再抓
+pub fn start_capture_after(app: AppHandle, origin: Origin, wait: std::time::Duration) {
     let state = app.state::<AppState>();
     if state.capturing.swap(true, Ordering::SeqCst) {
         return;
@@ -62,22 +72,41 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
         windows::hide_bar(&app);
         windows::hide_overlays(&app);
     }
+    let id = CAPTURE_SEQ.fetch_add(1, Ordering::SeqCst);
     let session = {
         let s = state.settings.lock().unwrap();
         // 升级提示只给回车是"复制"的那种截图（热键、托盘，且不是在加到这条）；页面真显示了才算看过（hint_seen）
         let by_key = matches!(origin, Origin::Hotkey | Origin::Tray) && !has_draft;
         let hint = (by_key && capture_mode::needs_upgrade_hint(&s)).then(|| capture_mode::UPGRADE_HINT.to_string());
-        Session { origin, primary: capture_mode::primary(origin, draft_state, s.enter_action), hint }
+        Session { id, origin, primary: capture_mode::primary(origin, draft_state, s.enter_action), hint }
     };
     *state.session.lock().unwrap() = Some(session);
     let toast_was_visible = app.get_webview_window("toast").and_then(|w| w.is_visible().ok()).unwrap_or(false);
     windows::hide_toast(&app);
-    std::thread::spawn(move || {
-        // 刚藏起来的提示窗、补一句小窗，等它们真的消失再截
-        if toast_was_visible || has_draft {
-            std::thread::sleep(std::time::Duration::from_millis(150));
+    // 快：框选窗口、小窗、提示窗都不会被截进去，先把框选窗口显示出来（按下就有反应），再抓屏
+    let fast = state.overlays_excluded.load(Ordering::SeqCst) && state.aux_excluded.load(Ordering::SeqCst);
+    let t0 = Instant::now();
+    if fast {
+        let geometry = windows::monitor_geometry();
+        if let Err(e) = windows::ensure_overlays_for(&app, &geometry) {
+            log::error!("创建框选窗口失败：{e}");
+            cancel(&app);
+            return;
         }
-        let t0 = Instant::now();
+        windows::place_overlays(&app, &geometry);
+        let infos: Vec<(usize, CaptureInfo)> =
+            geometry.iter().enumerate().map(|(i, g)| (i, capture_info(&state, i, *g, None))).collect();
+        windows::start_overlays(&app, infos);
+        windows::show_overlays(&app);
+        state.overlay_shown.store(true, Ordering::SeqCst);
+        focus_target(&app);
+        log::info!("capture: 框选窗口先显示 {}ms", t0.elapsed().as_millis());
+    }
+    std::thread::spawn(move || {
+        // 慢路线：刚藏起来的提示窗、补一句小窗，等它们真的消失再截
+        let wait = if !fast && (toast_was_visible || has_draft) { wait.max(std::time::Duration::from_millis(150)) } else { wait };
+        std::thread::sleep(wait);
+        let t1 = Instant::now();
         let state = app.state::<AppState>();
         let frozen = match capture::grab_all() {
             Ok(f) => f,
@@ -88,18 +117,34 @@ pub fn start_capture(app: AppHandle, origin: Origin) {
                 return;
             }
         };
-        log::info!("capture: grab {} 块屏 {}ms", frozen.monitors.len(), t0.elapsed().as_millis());
-        if let Err(e) = windows::ensure_overlays(&app, &frozen) {
-            log::error!("创建框选窗口失败：{e}");
-            cancel(&app);
+        log::info!("capture: grab {} 块屏 {}ms", frozen.monitors.len(), t1.elapsed().as_millis());
+        // 抓屏途中已经取消（或又开了新的一次）：这次的画面不用了
+        if state.session.lock().unwrap().as_ref().map(|s| s.id) != Some(id) {
             return;
         }
+        let geometry: Vec<(i32, i32, u32, u32)> = frozen.monitors.iter().map(|m| (m.x, m.y, m.width, m.height)).collect();
+        let same_screens = *state.overlay_geometry.lock().unwrap() == geometry;
+        if !fast || !same_screens {
+            if let Err(e) = windows::ensure_overlays(&app, &frozen) {
+                log::error!("创建框选窗口失败：{e}");
+                cancel(&app);
+                return;
+            }
+        }
         let taken_at = frozen.taken_at;
-        let infos: Vec<(usize, CaptureInfo)> =
-            frozen.monitors.iter().map(|m| (m.index, capture_info(&state, &frozen, m.index))).collect();
+        let urls: Vec<(usize, String)> = frozen.monitors.iter().map(|m| (m.index, windows::frozen_url(&frozen, m.index))).collect();
         *state.frozen.lock().unwrap() = Some(frozen);
-        state.overlay_shown.store(false, Ordering::SeqCst);
-        windows::start_overlays(&app, infos);
+        if fast && same_screens {
+            windows::frozen_ready(&app, urls);
+            log::info!("capture: 定格画面就绪 {}ms", t0.elapsed().as_millis());
+        } else {
+            let infos: Vec<(usize, CaptureInfo)> = urls
+                .into_iter()
+                .filter_map(|(i, url)| geometry.get(i).map(|g| (i, capture_info(&state, i, *g, Some(url)))))
+                .collect();
+            state.overlay_shown.store(false, Ordering::SeqCst);
+            windows::start_overlays(&app, infos);
+        }
         // 兜底：5 秒内一块框选画面都没出来，就结束这次截图，免得后面的热键一直无效
         std::thread::sleep(std::time::Duration::from_secs(5));
         let same_capture = state.frozen.lock().unwrap().as_ref().is_some_and(|f| f.taken_at == taken_at);
@@ -115,66 +160,67 @@ fn end_session(state: &AppState) {
     state.capturing.store(false, Ordering::SeqCst);
 }
 
-fn capture_info(state: &AppState, frozen: &Frozen, index: usize) -> CaptureInfo {
+fn capture_info(state: &AppState, index: usize, geometry: (i32, i32, u32, u32), url: Option<String>) -> CaptureInfo {
     let (primary, hint) =
         state.session.lock().unwrap().as_ref().map(|s| (s.primary, s.hint.clone())).unwrap_or((Action::Copy, None));
     let (shot_no, full) = state.draft.lock().unwrap().as_ref().map_or((1, false), |d| (d.shots.len() + 1, d.is_full()));
-    let geometry = frozen.monitors.iter().find(|m| m.index == index).map(|m| (m.x, m.y, m.width, m.height));
-    let last_rect = match (primary, geometry) {
-        (Action::Add, Some(g)) => capture_mode::last_rect_for(state.last_rect.lock().unwrap().as_ref(), index, g).map(RectView::from),
+    let last_rect = match primary {
+        Action::Add => capture_mode::last_rect_for(state.last_rect.lock().unwrap().as_ref(), index, geometry).map(RectView::from),
         _ => None,
     };
-    CaptureInfo { url: windows::frozen_url(frozen, index), primary, shot_no, last_rect, hint, full }
+    CaptureInfo { url, phys_w: geometry.2, primary, shot_no, last_rect, hint, full }
 }
 
 /// 框选页面启动时调用：如果正在截图，返回这块屏的定格画面和主按钮等
 pub fn overlay_init(app: &AppHandle, index: usize) -> Option<CaptureInfo> {
     let state = app.state::<AppState>();
-    let frozen = state.frozen.lock().unwrap();
-    let f = frozen.as_ref().filter(|f| f.monitors.iter().any(|m| m.index == index))?;
-    Some(capture_info(&state, f, index))
+    state.session.lock().unwrap().as_ref()?;
+    let geometry = *state.overlay_geometry.lock().unwrap().get(index)?;
+    let url = state
+        .frozen
+        .lock()
+        .unwrap()
+        .as_ref()
+        .filter(|f| f.monitors.iter().any(|m| m.index == index))
+        .map(|f| windows::frozen_url(f, index));
+    Some(capture_info(&state, index, geometry, url))
 }
 
-/// 某块屏的定格画面加载好了：显示这块屏的框选窗口，鼠标所在的那块拿焦点
+/// 框选页面收到这次截图：显示这块屏的框选窗口（先显示的路线里已经显示了），焦点给该拿的那块屏
 pub fn overlay_ready(app: &AppHandle, index: usize) {
     let state = app.state::<AppState>();
     let Some(w) = app.get_webview_window(&windows::overlay_label(index)) else { return };
-    if state.frozen.lock().unwrap().is_none() {
+    if state.session.lock().unwrap().is_none() {
         return;
     }
     let _ = w.show();
     state.overlay_shown.store(true, Ordering::SeqCst);
-    // 该拿焦点的那块屏：再截一张时是摆着上次那个框的屏（直接回车就能截），否则是鼠标所在的屏
-    let target = {
-        let frozen = state.frozen.lock().unwrap();
-        let cursor = windows::cursor_pos();
-        let adding = state.session.lock().unwrap().as_ref().is_some_and(|s| s.primary == Action::Add);
-        let last = *state.last_rect.lock().unwrap();
-        let monitors = frozen.as_ref().map(|f| f.monitors.as_slice()).unwrap_or_default();
-        let with_rect = monitors.iter().find(|m| {
-            adding && capture_mode::last_rect_for(last.as_ref(), m.index, (m.x, m.y, m.width, m.height)).is_some()
-        });
-        let under_cursor = monitors.iter().find(|m| {
-            cursor.is_some_and(|(cx, cy)| cx >= m.x && cx < m.x + m.width as i32 && cy >= m.y && cy < m.y + m.height as i32)
-        });
-        with_rect.or(under_cursor).map(|m| m.index)
-    };
-    // show() 会顺带激活窗口：别的屏后显示出来时，把焦点还给该拿焦点的那块（它已经显示了的话）
-    match target {
-        Some(t) if t == index => {
-            let _ = w.set_focus();
-        }
-        Some(t) => {
-            if let Some(tw) = app.get_webview_window(&windows::overlay_label(t)).filter(|tw| tw.is_visible().unwrap_or(false)) {
-                let _ = tw.set_focus();
-            }
-        }
-        None => {}
-    }
+    focus_target(app);
     let taken_at = state.frozen.lock().unwrap().as_ref().map(|f| f.taken_at);
     if let Some(t) = taken_at {
         let ms = (chrono::Local::now() - t).num_milliseconds();
         log::info!("capture: 屏 {index} 框选画面出现，距按热键 {ms}ms");
+    }
+}
+
+/// 该拿焦点的那块屏：再截一张时是摆着上次那个框的屏（直接回车就能截），否则是鼠标所在的屏。
+/// show() 会顺带激活窗口，所以每次有窗口显示出来都把焦点再给一次该拿的那块
+fn focus_target(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let target = {
+        let geometry = state.overlay_geometry.lock().unwrap().clone();
+        let cursor = windows::cursor_pos();
+        let adding = state.session.lock().unwrap().as_ref().is_some_and(|s| s.primary == Action::Add);
+        let last = *state.last_rect.lock().unwrap();
+        let with_rect = geometry.iter().enumerate().find(|(i, g)| adding && capture_mode::last_rect_for(last.as_ref(), *i, **g).is_some());
+        let under_cursor = geometry.iter().enumerate().find(|(_, (x, y, w, h))| {
+            cursor.is_some_and(|(cx, cy)| cx >= *x && cx < *x + *w as i32 && cy >= *y && cy < *y + *h as i32)
+        });
+        with_rect.or(under_cursor).map(|(i, _)| i)
+    };
+    let Some(t) = target else { return };
+    if let Some(tw) = app.get_webview_window(&windows::overlay_label(t)).filter(|tw| tw.is_visible().unwrap_or(false)) {
+        let _ = tw.set_focus();
     }
 }
 

@@ -8,7 +8,7 @@ mkdir -p out
 rm -f requests.jsonl
 python -I mock_ai.py requests.jsonl 18080 > /dev/null 2>&1 &
 MOCK=$!
-ALL="copy upgrade-hint record-one pixels multi discard crash toolbar annotate fast-annotate import note-ui ai-multi list enter-setting copy-text text-outside import-during-capture decode-fail full-nine note-typing-race second-screen focus-last-rect text-color bar-width paste-bad guide-follows-setting stray-click"
+ALL="copy upgrade-hint record-one pixels multi discard crash toolbar annotate fast-annotate import note-ui ai-multi list enter-setting copy-text text-outside import-during-capture decode-fail full-nine note-typing-race second-screen focus-last-rect text-color bar-width paste-bad guide-follows-setting stray-click not-dim"
 for m in ${@:-$ALL}; do
   st=settings-v2
   case $m in

@@ -11,7 +11,7 @@ import { COLORS, FONT_SIZES, drawShape, fontFor, loadStyle, saveStyle } from './
 /** @typedef {import('./geometry.js').Point} Point */
 /** @typedef {import('./geometry.js').Handle} Handle */
 /** @typedef {'copy' | 'record' | 'add'} Primary */
-/** @typedef {{url: string, primary: Primary, shotNo: number, lastRect: Rect | null, hint: string | null, full: boolean}} CaptureInfo */
+/** url 为空：框选窗口先显示了、还在抓屏，抓好后另发 capture:frozen @typedef {{url: string | null, physW: number, primary: Primary, shotNo: number, lastRect: Rect | null, hint: string | null, full: boolean}} CaptureInfo */
 /** @typedef {import('./shapes.js').Shape} Shape */
 /** @typedef {import('./shapes.js').Tool} Tool */
 
@@ -322,7 +322,7 @@ async function act(name) {
   try {
     if (shapes.length) {
       // 定格画面读不出来（极少见）就合成不了标注。不能退回不带标注的原图：打了码的地方会原样泄露出去
-      const base = await bg.decode().then(() => true, () => false);
+      const base = await waitBg();
       if (!base) {
         hint.className = 'warn';
         hint.textContent = '画面没加载出来，标注合成不了；按 Esc 重新截';
@@ -527,17 +527,16 @@ function load(next) {
   hintSeen = false;
   reset();
   document.body.classList.remove('backdrop');
-  physWidth = Number(new URL(next.url).searchParams.get('w')) || 0;
-  bgReady = false;
+  physWidth = next.physW || (next.url ? Number(new URL(next.url).searchParams.get('w')) : 0) || 0;
   style = loadStyle(storage);
   buildToolbar();
-  bg.classList.remove('ready');
-  bg.onload = () => {
-    bg.classList.add('ready');
-    bgReady = true;
-    render();
-  };
-  bg.src = next.url;
+  if (next.url) setBg(next.url);
+  else {
+    // 还在抓屏：先显示暗层（下面是实时画面，已经能框选），定格画面一到就换上
+    bgReady = false;
+    bg.classList.remove('ready');
+    bg.removeAttribute('src');
+  }
   // 再截一张：上一张的框摆回原位，直接回车就截同一块
   if (next.lastRect) {
     rect = fromPhys(next.lastRect, scale());
@@ -546,7 +545,26 @@ function load(next) {
   invoke('overlay_ready', { index });
 }
 
+/** 换上定格画面（裁剪始终用按热键那一刻的原图） @param {string} url */
+function setBg(url) {
+  bgReady = false;
+  bg.classList.remove('ready');
+  bg.onload = () => {
+    bg.classList.add('ready');
+    bgReady = true;
+    render();
+  };
+  bg.src = url;
+}
+
+/** 等定格画面到位（先显示的路线里，抓屏可能还没完）；最多等 3 秒 */
+async function waitBg() {
+  for (let i = 0; i < 300 && !bg.getAttribute('src'); i++) await new Promise((r) => setTimeout(r, 10));
+  return bg.decode().then(() => true, () => false);
+}
+
 current.listen('capture:start', (/** @type {{payload: CaptureInfo}} */ ev) => load(ev.payload));
+current.listen('capture:frozen', (/** @type {{payload: {url: string}}} */ ev) => { if (info) setBg(ev.payload.url); });
 
 // 页面刚建好时可能错过了 capture:start，主动问一次
 invoke('overlay_init', { index }).then((next) => { if (next) load(/** @type {CaptureInfo} */ (next)); });

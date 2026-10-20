@@ -14,6 +14,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// 这一次截图（框选中）：从哪儿开始的、回车做什么、要不要给升级提示
 pub struct Session {
+    /// 每次截图一个编号：截图途中取消又开了新的一次，旧的那次抓屏结果就不用了
+    pub id: u64,
     pub origin: Origin,
     pub primary: Action,
     pub hint: Option<String>,
@@ -52,6 +54,10 @@ pub struct AppState {
     pub session: Mutex<Option<Session>>,
     /// 本次截图至少有一块框选画面已经显示
     pub overlay_shown: AtomicBool,
+    /// 框选窗口都设成了"不被截进去"（Win10 2004 起支持）：可以先显示再抓屏
+    pub overlays_excluded: AtomicBool,
+    /// 补一句小窗、小条、提示窗也都不被截进去：抓屏前不用等它们收起
+    pub aux_excluded: AtomicBool,
     /// 还没记完的这一条（补一句小窗开着或"再截一张"的小条挂着）
     pub draft: Mutex<Option<Draft>>,
     /// 上一张的选框，"再截一张"时摆回原位
@@ -79,6 +85,8 @@ impl AppState {
             overlay_geometry: Mutex::new(Vec::new()),
             capturing: AtomicBool::new(false),
             overlay_shown: AtomicBool::new(false),
+            overlays_excluded: AtomicBool::new(false),
+            aux_excluded: AtomicBool::new(false),
             session: Mutex::new(None),
             draft: Mutex::new(None),
             last_rect: Mutex::new(None),

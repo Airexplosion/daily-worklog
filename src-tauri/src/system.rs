@@ -50,11 +50,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "capture" => {
-                // 等托盘菜单淡出，免得被截进定格画面
+                // 等托盘菜单淡出再抓屏，免得被截进定格画面（框选窗口能先显示的话会马上显示）
                 let app = app.clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                    crate::flow::start_capture(app, crate::capture_mode::Origin::Tray);
+                    crate::flow::start_capture_after(app, crate::capture_mode::Origin::Tray, std::time::Duration::from_millis(250));
                 });
             }
             "open" => {
