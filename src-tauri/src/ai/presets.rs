@@ -80,6 +80,17 @@ const PRESETS: &[Preset] = &[
     },
 ];
 
+/// 这家一次请求最多放几张图。查得到的按官方说法，查不到的从保守估计；超过的由识图前拼图凑够
+pub fn max_images(provider: &str) -> usize {
+    match provider {
+        // 据第三方资料 glm-4v-plus 一次最多 5 张
+        "zhipu" => 5,
+        // 8k 上下文，每张图约占 1024 token
+        "kimi" => 4,
+        _ => 9,
+    }
+}
+
 pub fn all() -> &'static [Preset] {
     PRESETS
 }
@@ -102,5 +113,14 @@ mod tests {
         assert_eq!(all()[0].id, "qwen", "通义千问排第一（默认推荐）");
         assert!(find("custom").is_some());
         assert!(all().iter().all(|p| p.id == "custom" || p.base_url.starts_with("https://")));
+    }
+
+    #[test]
+    fn max_images_per_preset() {
+        assert_eq!(max_images("zhipu"), 5);
+        assert_eq!(max_images("kimi"), 4);
+        assert_eq!(max_images("qwen"), 9);
+        assert_eq!(max_images("custom"), 9);
+        assert_eq!(max_images("没见过的"), 9);
     }
 }

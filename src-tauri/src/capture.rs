@@ -4,7 +4,7 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder};
 use image::imageops::{self, FilterType};
-use image::{DynamicImage, ExtendedColorType, ImageEncoder, RgbaImage};
+use image::{DynamicImage, ExtendedColorType, ImageEncoder, Rgba, RgbaImage};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub const AI_MAX_SIDE: u32 = 1600;
@@ -155,6 +155,29 @@ pub fn ai_jpeg(img: &RgbaImage) -> Vec<u8> {
     buf
 }
 
+/// 张数超过这家一次能收的上限时怎么分组（相邻几张拼成一张）：分成 limit 组，大小差不超过 1，大的在前
+pub fn group_sizes(n: usize, limit: usize) -> Vec<usize> {
+    let limit = limit.max(1);
+    if n <= limit {
+        return vec![1; n];
+    }
+    let (base, extra) = (n / limit, n % limit);
+    (0..limit).map(|i| base + usize::from(i < extra)).collect()
+}
+
+/// 几张图上下拼成一张：宽取最宽那张，左对齐，空出来的地方填白
+pub fn stack_vertical(imgs: &[RgbaImage]) -> RgbaImage {
+    let w = imgs.iter().map(|i| i.width()).max().unwrap_or(1).max(1);
+    let h = imgs.iter().map(|i| i.height()).sum::<u32>().max(1);
+    let mut out = RgbaImage::from_pixel(w, h, Rgba([255, 255, 255, 255]));
+    let mut y = 0i64;
+    for img in imgs {
+        imageops::replace(&mut out, img, 0, y);
+        y += img.height() as i64;
+    }
+    out
+}
+
 /// 等比缩小到不超过 max_w × max_h，本来就小的不放大
 pub fn thumbnail_fit(img: &RgbaImage, max_w: u32, max_h: u32) -> RgbaImage {
     let (w, h) = img.dimensions();
@@ -290,5 +313,26 @@ mod tests {
         assert!(id.starts_with("20261015-183012-"), "{id}");
         assert_eq!(id.len(), "20261015-183012-a1b2".len());
         assert_ne!(shot_id(t), shot_id(t));
+    }
+
+    #[test]
+    fn group_sizes_even_split() {
+        assert_eq!(group_sizes(3, 9), vec![1, 1, 1]);
+        assert_eq!(group_sizes(7, 5), vec![2, 2, 1, 1, 1]);
+        assert_eq!(group_sizes(9, 4), vec![3, 2, 2, 2]);
+        assert_eq!(group_sizes(9, 1), vec![9]);
+        assert_eq!(group_sizes(0, 5), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn stack_vertical_pads_white() {
+        let red = RgbaImage::from_pixel(2, 1, Rgba([255, 0, 0, 255]));
+        let blue = RgbaImage::from_pixel(3, 2, Rgba([0, 0, 255, 255]));
+        let s = stack_vertical(&[red, blue]);
+        assert_eq!(s.dimensions(), (3, 3));
+        assert_eq!(*s.get_pixel(0, 0), Rgba([255, 0, 0, 255]));
+        assert_eq!(*s.get_pixel(2, 0), Rgba([255, 255, 255, 255]));
+        assert_eq!(*s.get_pixel(0, 1), Rgba([0, 0, 255, 255]));
+        assert_eq!(*s.get_pixel(2, 2), Rgba([0, 0, 255, 255]));
     }
 }

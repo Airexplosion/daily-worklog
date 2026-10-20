@@ -157,7 +157,7 @@ pub async fn test_connection(app: AppHandle) -> ConnectionTest {
             if x < 32 { image::Rgba([0, 95, 184, 255]) } else { image::Rgba([255, 255, 255, 255]) }
         });
         let jpeg = crate::capture::ai_jpeg(&img);
-        let messages = crate::recognize::build_messages("你是连接测试助手，用一个词回答。", "这张图左半边是什么颜色？", Some(&jpeg));
+        let messages = crate::recognize::build_messages("你是连接测试助手，用一个词回答。", "这张图左半边是什么颜色？", &[jpeg]);
         Some(probe(&settings.vision, messages).await)
     } else {
         None

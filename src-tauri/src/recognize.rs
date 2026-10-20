@@ -2,6 +2,7 @@
 
 use crate::ai::client::{self, AiError};
 use crate::ai::parse::parse_vision;
+use crate::ai::presets;
 use crate::ai::prompt::vision_prompt;
 use crate::capture;
 use crate::format::clean_item;
@@ -11,11 +12,16 @@ use crate::tags;
 use crate::windows::{self, ToastPayload};
 use base64::Engine;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc;
 
-pub const VISION_TIMEOUT: Duration = Duration::from_secs(20);
+/// 识图超时：一张 20 秒，每多一张加 10 秒，最多 60 秒
+pub fn vision_timeout(images: usize) -> Duration {
+    let n = images.max(1) as u64;
+    Duration::from_secs((20 + 10 * (n - 1)).min(60))
+}
 pub const PLACEHOLDER: &str = "（待补充）";
 
 #[derive(Debug, Clone)]
@@ -24,17 +30,49 @@ pub struct Job {
     pub id: String,
 }
 
-pub fn build_messages(system: &str, note: &str, image_jpeg: Option<&[u8]>) -> Value {
+/// 所有图按顺序放进同一条用户消息，最后是补充说明
+pub fn build_messages(system: &str, note: &str, images: &[Vec<u8>]) -> Value {
     let note = note.trim();
     let text = format!("补充说明：{}", if note.is_empty() { "（无补充说明）" } else { note });
-    let user = match image_jpeg {
-        Some(bytes) => {
-            let url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-            json!([{ "type": "image_url", "image_url": { "url": url } }, { "type": "text", "text": text }])
-        }
-        None => Value::String(text),
+    let user = if images.is_empty() {
+        Value::String(text)
+    } else {
+        let mut parts: Vec<Value> = images
+            .iter()
+            .map(|bytes| {
+                let url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+                json!({ "type": "image_url", "image_url": { "url": url } })
+            })
+            .collect();
+        parts.push(json!({ "type": "text", "text": text }));
+        Value::Array(parts)
     };
     json!([{ "role": "system", "content": system }, { "role": "user", "content": user }])
+}
+
+/// 服务商嫌图太多、太长（参数错误类，消息里提到图片、数量、长度）
+pub fn is_too_many_images(e: &AiError) -> bool {
+    match e {
+        AiError::Http(400 | 413 | 422, msg) => {
+            let m = msg.to_lowercase();
+            ["image", "图片", "too many", "exceed", "超过", "超出", "token", "length", "context"].iter().any(|k| m.contains(k))
+        }
+        _ => false,
+    }
+}
+
+/// 按上限分组，相邻的上下拼成一张，再压成发给 AI 的 JPEG。返回（图，有没有拼过）
+pub fn prepare_images(imgs: &[image::RgbaImage], limit: usize) -> (Vec<Vec<u8>>, bool) {
+    let sizes = capture::group_sizes(imgs.len(), limit);
+    let merged = sizes.iter().any(|&n| n > 1);
+    let mut out = Vec::with_capacity(sizes.len());
+    let mut i = 0;
+    for n in sizes {
+        let group = &imgs[i..i + n];
+        i += n;
+        out.push(if n == 1 { capture::ai_jpeg(&group[0]) } else { capture::ai_jpeg(&capture::stack_vertical(group)) });
+    }
+    (out, merged)
 }
 
 /// 网络问题、超时、限流、服务端错误重试一次；配置错误不重试
@@ -109,40 +147,59 @@ async fn process(app: &AppHandle, job: Job) {
         data.days
             .get(&job.date)
             .and_then(|d| d.items.iter().find(|i| i.id == job.id))
-            .map(|i| (i.note.clone(), i.shots.first().cloned()))
+            .map(|i| (i.note.clone(), i.shots.clone()))
     };
-    let Some((note, shot)) = found else { return };
+    let Some((note, shots)) = found else { return };
     let cfg = settings.vision.clone();
     if cfg.base_url.trim().is_empty() || cfg.api_key.trim().is_empty() || cfg.model.trim().is_empty() {
         mark_pending(app, &job, &AiError::NoKey.to_string(), "先去设置页填接口信息，或手动写这一条");
         return;
     }
-    let with_image = settings.send_image_to_ai && shot.is_some();
+    let with_image = settings.send_image_to_ai && !shots.is_empty();
     if !with_image && note.trim().is_empty() {
         mark_pending(app, &job, "没有补充说明，截图也不发送给 AI", "截图已保存，有空手动写一句");
         return;
     }
-    let image = if with_image {
-        let path = state.store.dir().join(shot.unwrap_or_default());
-        tauri::async_runtime::spawn_blocking(move || {
-            image::open(&path).ok().map(|img| capture::ai_jpeg(&img.to_rgba8()))
+    // 读出所有图（不在的跳过），按这家一次能收的张数分组拼好
+    let imgs: Arc<Vec<image::RgbaImage>> = if with_image {
+        let dir = state.store.dir().to_path_buf();
+        let loaded = tauri::async_runtime::spawn_blocking(move || {
+            shots.iter().filter_map(|rel| image::open(dir.join(rel)).ok().map(|img| img.to_rgba8())).collect::<Vec<_>>()
         })
         .await
-        .ok()
-        .flatten()
+        .unwrap_or_default();
+        Arc::new(loaded)
     } else {
-        None
+        Arc::new(Vec::new())
     };
-    if with_image && image.is_none() && note.trim().is_empty() {
+    if with_image && imgs.is_empty() && note.trim().is_empty() {
         mark_pending(app, &job, "截图文件读不出来", "截图已保存，有空手动写一句");
         return;
     }
-    let messages = build_messages(&vision_prompt(&settings, image.is_some()), &note, image.as_deref());
-    let mut result = client::chat(&cfg, messages.clone(), VISION_TIMEOUT).await;
+    let attempt = |limit: usize| {
+        let imgs = imgs.clone();
+        let settings = settings.clone();
+        let note = note.clone();
+        async move {
+            let (jpegs, merged) = tauri::async_runtime::spawn_blocking(move || prepare_images(&imgs, limit))
+                .await
+                .unwrap_or_default();
+            let sent = jpegs.len();
+            log::info!("识图：发 {sent} 张图{}", if merged { "（有拼图）" } else { "" });
+            (build_messages(&vision_prompt(&settings, sent, merged), &note, &jpegs), sent)
+        }
+    };
+    let (messages, sent) = attempt(presets::max_images(&settings.provider)).await;
+    let mut result = client::chat(&cfg, messages.clone(), vision_timeout(sent)).await;
     if let Err(e) = &result {
-        if should_retry(e) {
+        if is_too_many_images(e) && sent > 1 {
+            let smaller = (sent / 2).max(1);
+            log::warn!("一次 {sent} 张图对方嫌多，拼成 {smaller} 张再试：{e}");
+            let (messages, sent) = attempt(smaller).await;
+            result = client::chat(&cfg, messages, vision_timeout(sent)).await;
+        } else if should_retry(e) {
             log::warn!("识图失败，重试一次：{e}");
-            result = client::chat(&cfg, messages, VISION_TIMEOUT).await;
+            result = client::chat(&cfg, messages, vision_timeout(sent)).await;
         }
     }
     match result {
@@ -264,7 +321,7 @@ mod tests {
     #[test]
     fn build_messages_with_image() {
         let s = Settings::default();
-        let m = build_messages(&vision_prompt(&s, true), "沟通物业3号楼会议室锁坏了", Some(&[0xFF, 0xD8, 0xFF]));
+        let m = build_messages(&vision_prompt(&s, 1, false), "沟通物业3号楼会议室锁坏了", &[vec![0xFF, 0xD8, 0xFF]]);
         let arr = m.as_array().unwrap();
         assert_eq!(arr[0]["role"], "system");
         assert!(arr[0]["content"].as_str().unwrap().ends_with(VISION_TAIL));
@@ -278,9 +335,9 @@ mod tests {
     #[test]
     fn build_messages_text_only_and_empty_note() {
         let s = Settings::default();
-        let m = build_messages(&vision_prompt(&s, false), "整理合同", None);
+        let m = build_messages(&vision_prompt(&s, 0, false), "整理合同", &[]);
         assert_eq!(m[1]["content"].as_str().unwrap(), "补充说明：整理合同");
-        let empty = build_messages(&vision_prompt(&s, true), "  ", Some(&[1]));
+        let empty = build_messages(&vision_prompt(&s, 1, false), "  ", &[vec![1]]);
         assert_eq!(empty[1]["content"][1]["text"], "补充说明：（无补充说明）");
     }
 
@@ -334,5 +391,34 @@ mod tests {
         assert!(should_retry(&AiError::Http(429, "".into())));
         assert!(!should_retry(&AiError::Http(401, "".into())));
         assert!(!should_retry(&AiError::NoKey));
+    }
+
+    #[test]
+    fn build_messages_keeps_image_order() {
+        let imgs = vec![vec![1u8], vec![2u8], vec![3u8]];
+        let m = build_messages("系统", "补的话", &imgs);
+        let content = m[1]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 4);
+        for (i, b) in [1u8, 2, 3].iter().enumerate() {
+            let want = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode([*b]));
+            assert_eq!(content[i]["image_url"]["url"], want.as_str());
+        }
+        assert_eq!(content[3]["type"], "text");
+    }
+
+    #[test]
+    fn vision_timeout_scales_and_caps() {
+        let secs = |n| vision_timeout(n).as_secs();
+        assert_eq!([secs(0), secs(1), secs(2), secs(5), secs(9)], [20, 20, 30, 60, 60]);
+    }
+
+    #[test]
+    fn too_many_images_detection() {
+        assert!(is_too_many_images(&AiError::Http(400, "Too many images".into())));
+        assert!(is_too_many_images(&AiError::Http(400, "图片数量超过限制".into())));
+        assert!(is_too_many_images(&AiError::Http(413, "payload exceeds limit".into())));
+        assert!(!is_too_many_images(&AiError::Http(401, "bad key".into())));
+        assert!(!is_too_many_images(&AiError::Http(500, "image".into())));
+        assert!(!is_too_many_images(&AiError::Timeout));
     }
 }

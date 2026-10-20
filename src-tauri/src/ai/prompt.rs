@@ -98,14 +98,37 @@ fn override_of(o: &Option<String>) -> Option<&str> {
     o.as_deref().filter(|t| !t.trim().is_empty())
 }
 
-/// 识图用的系统提示词（已追加固定结尾）
-pub fn vision_prompt(s: &Settings, with_image: bool) -> String {
-    let template = override_of(&s.prompt_overrides.vision).unwrap_or(if with_image {
+/// 有图时由代码追加：图上的标注是用户自己加的（用户改过完整提示词也照样追加）
+pub const ANNOTATION_NOTE: &str =
+    "图上的框、圈、箭头、手写文字、马赛克可能是用户自己加的标注：标注指的地方是重点，不要描述标注本身，也不要猜马赛克下面的内容。";
+
+/// 多张图时由代码追加：同一件事，按顺序看，只写一条
+pub fn multi_image_note(n: usize, merged: bool) -> String {
+    let mut s = format!("这次给你的是 {n} 张截图，是同一件事，按顺序看，合起来只写一条。");
+    if merged {
+        s.push_str("有的图是几张截图上下拼在一起的，从上往下看。");
+    }
+    s
+}
+
+/// 识图用的系统提示词：模板（或用户改过的），再按张数追加说明，最后是固定结尾。images 是实际发出去的张数
+pub fn vision_prompt(s: &Settings, images: usize, merged: bool) -> String {
+    let template = override_of(&s.prompt_overrides.vision).unwrap_or(if images > 0 {
         VISION_TEMPLATE
     } else {
         VISION_TEXT_ONLY_TEMPLATE
     });
-    format!("{}\n\n{}", fill(template, s), VISION_TAIL)
+    let mut parts = vec![fill(template, s)];
+    if images >= 2 {
+        parts.push(multi_image_note(images, merged));
+    } else if merged {
+        parts.push("这张图是几张截图上下拼在一起的，是同一件事，从上往下看，合起来只写一条。".to_string());
+    }
+    if images >= 1 {
+        parts.push(ANNOTATION_NOTE.to_string());
+    }
+    parts.push(VISION_TAIL.to_string());
+    parts.join("\n\n")
 }
 
 pub fn summary_prompt(s: &Settings) -> String {
@@ -126,7 +149,7 @@ mod tests {
     #[test]
     fn vision_prompt_fills_vars() {
         let s = settings();
-        let p = vision_prompt(&s, true);
+        let p = vision_prompt(&s, 1, false);
         assert!(p.contains("你是某某的工作记录整理助手"));
         assert!(p.contains("（暂无）"));
         assert!(p.contains("完成、今天、共计、顺利、进一步、持续、有效推进"));
@@ -142,14 +165,14 @@ mod tests {
         let mut s = settings();
         s.allow_ai_new_tags = false;
         s.tags = vec![TagDef { name: "项目乙".into(), created_by: TagOrigin::User, created_at: String::new(), pending: false }];
-        let p = vision_prompt(&s, true);
+        let p = vision_prompt(&s, 1, false);
         assert!(p.contains("都不合适就用\"其他\""));
         assert!(p.contains("优先从现有标签里选：项目乙"));
     }
 
     #[test]
     fn vision_prompt_text_only() {
-        let p = vision_prompt(&settings(), false);
+        let p = vision_prompt(&settings(), 0, false);
         assert!(!p.contains("截图是财务报表"));
         assert!(p.contains("用户会给你一句话说明"));
         assert!(p.ends_with(VISION_TAIL));
@@ -159,7 +182,7 @@ mod tests {
     fn style_examples_block() {
         let mut s = settings();
         s.style_examples = "某某10.14工作梳理\n1.对账".into();
-        let p = vision_prompt(&s, true);
+        let p = vision_prompt(&s, 1, false);
         assert!(p.contains("以下是某某以前写过的总结，学习其口吻和用词，不要照抄内容：\n某某10.14工作梳理\n1.对账"));
         let p2 = summary_prompt(&s);
         assert!(p2.contains("学习其口吻和用词"));
@@ -169,7 +192,7 @@ mod tests {
     fn override_still_gets_tail() {
         let mut s = settings();
         s.prompt_overrides.vision = Some("自定义：{姓名}".into());
-        let p = vision_prompt(&s, true);
+        let p = vision_prompt(&s, 1, false);
         assert!(p.starts_with("自定义：某某"));
         assert!(p.ends_with(VISION_TAIL));
     }
@@ -180,5 +203,28 @@ mod tests {
         assert!(p.contains("你是某某的助手"));
         assert!(p.contains("只输出编号条目，不要输出标题"));
         assert!(!p.contains("{"));
+    }
+
+    #[test]
+    fn vision_prompt_by_image_count() {
+        let s = settings();
+        let none = vision_prompt(&s, 0, false);
+        assert!(!none.contains(ANNOTATION_NOTE) && !none.contains("张截图"), "{none}");
+        let one = vision_prompt(&s, 1, false);
+        assert!(one.contains(ANNOTATION_NOTE) && !one.contains("这次给你的是"), "{one}");
+        let three = vision_prompt(&s, 3, false);
+        assert!(three.contains("这次给你的是 3 张截图") && three.contains(ANNOTATION_NOTE), "{three}");
+        assert!(three.ends_with(VISION_TAIL));
+        assert!(!three.contains("上下拼在一起"));
+        assert!(vision_prompt(&s, 3, true).contains("上下拼在一起"));
+    }
+
+    #[test]
+    fn vision_prompt_override_still_gets_notes() {
+        let mut s = settings();
+        s.prompt_overrides.vision = Some("自定义识图提示词".into());
+        let p = vision_prompt(&s, 2, false);
+        assert!(p.starts_with("自定义识图提示词"));
+        assert!(p.contains("这次给你的是 2 张截图") && p.contains(ANNOTATION_NOTE) && p.ends_with(VISION_TAIL), "{p}");
     }
 }
