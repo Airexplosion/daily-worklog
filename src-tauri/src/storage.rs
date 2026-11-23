@@ -239,7 +239,9 @@ fn parse_data(bytes: &[u8]) -> Option<Data> {
 
 fn parse_settings(bytes: &[u8]) -> Option<Settings> {
     let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
-    serde_json::from_slice::<Settings>(body).ok()
+    let mut settings = serde_json::from_slice::<Settings>(body).ok()?;
+    crate::ai::presets::migrate_saved_kimi_models(&mut settings);
+    Some(settings)
 }
 
 fn log_read_error(path: &Path, e: &io::Error) {
@@ -273,6 +275,36 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn old_kimi_defaults_migrate_without_replacing_custom_settings_or_keys() {
+        let mut raw = serde_json::json!({
+            "provider": "kimi",
+            "vision": { "baseURL": "https://api.moonshot.cn/v1", "apiKey": "synthetic-vision",
+                        "model": "moonshot-v1-8k-vision-preview" },
+            "summary": { "apiKey": "synthetic-summary", "model": "moonshot-v1-8k" },
+        });
+        let read = |v: &serde_json::Value| parse_settings(&serde_json::to_vec(v).unwrap()).unwrap();
+        let migrated = read(&raw);
+        assert_eq!(migrated.vision.model, "kimi-k3");
+        assert_eq!(migrated.summary_config().model, "kimi-k3");
+        assert_eq!(migrated.vision.api_key, "synthetic-vision");
+        assert_eq!(migrated.summary.api_key, "synthetic-summary");
+
+        raw["separateSummary"] = serde_json::json!(true);
+        raw["summary"]["baseURL"] = serde_json::json!("https://custom.example/v1");
+        raw["vision"]["model"] = serde_json::json!("my-vision");
+        let custom = read(&raw);
+        assert_eq!(custom.vision.model, "my-vision");
+        assert_eq!(custom.summary_config().model, "moonshot-v1-8k");
+        assert_eq!(custom.summary_config().base_url, "https://custom.example/v1");
+        assert_eq!(custom.summary_config().api_key, "synthetic-summary");
+
+        raw["summary"]["baseURL"] = serde_json::json!("https://api.moonshot.cn/v1/chat/completions");
+        assert_eq!(read(&raw).summary_config().model, "kimi-k3");
+        raw["provider"] = serde_json::json!("custom");
+        assert_eq!(read(&raw).summary_config().model, "moonshot-v1-8k");
+    }
+
     use super::*;
     use crate::model::{Data, Day, Settings};
     use chrono::{NaiveDate, NaiveDateTime};
