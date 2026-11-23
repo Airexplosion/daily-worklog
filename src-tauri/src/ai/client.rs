@@ -1,6 +1,7 @@
 //! OpenAI 兼容的 chat/completions 客户端（普通 + 流式）。
 //! 走 Windows 系统代理（reqwest system-proxy），TLS 用系统证书（native-tls）。
 
+use super::presets::{is_kimi_endpoint, KIMI_K3};
 use crate::model::ModelConfig;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -102,8 +103,18 @@ async fn send(cfg: &ModelConfig, body: Value, timeout: Duration) -> Result<reqwe
     Ok(resp)
 }
 
+fn request_body(cfg: &ModelConfig, messages: Value, stream: bool) -> Value {
+    let model = cfg.model.trim();
+    let mut body = json!({ "model": model, "messages": messages, "stream": stream });
+    // 官方 Kimi K3 的 temperature 固定，按文档不发送该参数。
+    if model != KIMI_K3 || !is_kimi_endpoint(&cfg.base_url) {
+        body["temperature"] = json!(if stream { 0.3 } else { 0.2 });
+    }
+    body
+}
+
 pub async fn chat(cfg: &ModelConfig, messages: Value, timeout: Duration) -> Result<String, AiError> {
-    let body = json!({ "model": cfg.model.trim(), "messages": messages, "temperature": 0.2, "stream": false });
+    let body = request_body(cfg, messages, false);
     let resp = send(cfg, body, timeout).await?;
     let v: Value = resp.json().await.map_err(|e| AiError::BadResponse(e.to_string()))?;
     extract_content(&v).ok_or_else(|| AiError::BadResponse("没有 choices[0].message.content".into()))
@@ -116,7 +127,7 @@ pub async fn chat_stream(
     timeout: Duration,
     mut on_delta: impl FnMut(&str),
 ) -> Result<String, AiError> {
-    let body = json!({ "model": cfg.model.trim(), "messages": messages, "temperature": 0.3, "stream": true });
+    let body = request_body(cfg, messages, true);
     let resp = send(cfg, body, timeout).await?;
     let is_sse = resp
         .headers()
@@ -185,6 +196,32 @@ mod tests {
         assert_eq!(endpoint("https://api.x.com/v1/"), "https://api.x.com/v1/chat/completions");
         assert_eq!(endpoint("https://api.x.com/v1"), "https://api.x.com/v1/chat/completions");
         assert_eq!(endpoint("https://api.x.com/v1/chat/completions"), "https://api.x.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn kimi_k3_omits_temperature_only_on_stock_endpoint() {
+        let messages = json!([{ "role": "user", "content": "synthetic" }]);
+        for (base_url, model, omit) in [
+            ("https://api.moonshot.cn/v1", "kimi-k3", true),
+            (" https://api.moonshot.cn/v1/chat/completions/ ", " kimi-k3 ", true),
+            ("https://custom.example/v1", "kimi-k3", false),
+            ("https://api.moonshot.cn.example/v1", "kimi-k3", false),
+            ("https://api.moonshot.cn/v1", "another-model", false),
+            ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus", false),
+        ] {
+            let cfg = ModelConfig { base_url: base_url.into(), model: model.into(), ..Default::default() };
+            for stream in [false, true] {
+                let body = request_body(&cfg, messages.clone(), stream);
+                assert_eq!(body["messages"], messages);
+                assert_eq!(body["model"], json!(model.trim()));
+                assert_eq!(body["stream"], json!(stream));
+                if omit {
+                    assert!(body.get("temperature").is_none());
+                } else {
+                    assert_eq!(body["temperature"], json!(if stream { 0.3 } else { 0.2 }));
+                }
+            }
+        }
     }
 
     #[test]

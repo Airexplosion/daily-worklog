@@ -17,6 +17,34 @@ pub struct Preset {
     pub note: &'static str,
 }
 
+pub(super) const KIMI_K3: &str = "kimi-k3";
+const KIMI_BASE_URL: &str = "https://api.moonshot.cn/v1";
+
+pub(crate) fn is_kimi_endpoint(base_url: &str) -> bool {
+    let base = base_url.trim().trim_end_matches('/');
+    base.strip_suffix("/chat/completions").unwrap_or(base) == KIMI_BASE_URL
+}
+
+pub(crate) fn migrate_saved_kimi_models(settings: &mut crate::model::Settings) {
+    if settings.provider != "kimi" {
+        return;
+    }
+    if is_kimi_endpoint(&settings.vision.base_url)
+        && settings.vision.model == "moonshot-v1-8k-vision-preview"
+    {
+        settings.vision.model = KIMI_K3.into();
+    }
+    // 未单独配置时，汇总实际使用识图的接口和 Key。
+    let summary_url = if settings.separate_summary {
+        &settings.summary.base_url
+    } else {
+        &settings.vision.base_url
+    };
+    if is_kimi_endpoint(summary_url) && settings.summary.model == "moonshot-v1-8k" {
+        settings.summary.model = KIMI_K3.into();
+    }
+}
+
 const PRESETS: &[Preset] = &[
     Preset {
         id: "qwen",
@@ -51,9 +79,9 @@ const PRESETS: &[Preset] = &[
     Preset {
         id: "kimi",
         name: "Kimi（月之暗面）",
-        base_url: "https://api.moonshot.cn/v1",
-        vision_model: "moonshot-v1-8k-vision-preview",
-        summary_model: "moonshot-v1-8k",
+        base_url: KIMI_BASE_URL,
+        vision_model: KIMI_K3,
+        summary_model: KIMI_K3,
         help_url: "https://platform.moonshot.cn/console/api-keys",
         can_vision: true,
         note: "",
